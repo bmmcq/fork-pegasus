@@ -1,17 +1,14 @@
 use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter};
-use std::io::Read;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::path::Path;
 use futures::stream::{BoxStream, SelectAll};
 use futures::{Stream, StreamExt};
 use pegasus::{JobConf, ServerConf};
 
-use crate::job::JobDesc;
 use crate::pb::job_config::Servers;
 use crate::pb::job_service_client::JobServiceClient;
-use crate::pb::{BinaryResource, Empty, JobConfig, JobRequest, ServerList};
+use crate::pb::{Empty, JobConfig, JobRequest, ServerList};
 
 pub enum JobError {
     InvalidConfig(String),
@@ -55,58 +52,58 @@ impl RPCJobClient {
         Ok(())
     }
 
-    pub async fn add_library<P: AsRef<Path>>(&mut self, name: &str, path: P) -> Result<(), JobError> {
-
-        if self.conns.len() == 0 {
-            return Ok(());
-        }
-
-        match std::fs::File::open(path) {
-            Ok(mut file) => {
-                let mut buffer = Vec::new();
-                match file.read_to_end(&mut buffer) {
-                    Ok(_size) => {
-                        buffer.shrink_to_fit();
-                        let mut tasks = Vec::new();
-                        for conn in self.conns.iter() {
-                            if let Some(client) = conn {
-                                let res = BinaryResource { name: name.to_string(), resource: buffer.clone() };
-                                tasks.push(async move {
-                                    let mut client = client.borrow_mut();
-                                    client.add_library(res.clone()).await
-                                });
-                            }
-                        }
-                        if tasks.len() == 0 {
-                            return Ok(());
-                        }
-
-                        if tasks.len() == 1 {
-                            if let Err(e) = tasks.pop().unwrap().await {
-                                return Err(JobError::RPCError(e));
-                            }
-                        } else {
-                            for result in futures::future::join_all(tasks).await {
-                                if let Err(e) = result {
-                                    return Err(JobError::RPCError(e));
-                                }
-                            }
-                        }
-                        Ok(())
-                    },
-                    Err(e) => {
-                        Err(JobError::InvalidConfig(format!("read lib fail {}", e)))
-                    }
-                }
-            },
-            Err(e) => {
-                Err(JobError::InvalidConfig(format!("open lib file failure: {}", e)))
-            }
-        }
-    }
+    // pub async fn add_library<P: AsRef<Path>>(&mut self, name: &str, path: P) -> Result<(), JobError> {
+    //
+    //     if self.conns.len() == 0 {
+    //         return Ok(());
+    //     }
+    //
+    //     match std::fs::File::open(path) {
+    //         Ok(mut file) => {
+    //             let mut buffer = Vec::new();
+    //             match file.read_to_end(&mut buffer) {
+    //                 Ok(_size) => {
+    //                     buffer.shrink_to_fit();
+    //                     let mut tasks = Vec::new();
+    //                     for conn in self.conns.iter() {
+    //                         if let Some(client) = conn {
+    //                             let res = BinaryResource { name: name.to_string(), resource: buffer.clone() };
+    //                             tasks.push(async move {
+    //                                 let mut client = client.borrow_mut();
+    //                                 client.add_library(res.clone()).await
+    //                             });
+    //                         }
+    //                     }
+    //                     if tasks.len() == 0 {
+    //                         return Ok(());
+    //                     }
+    //
+    //                     if tasks.len() == 1 {
+    //                         if let Err(e) = tasks.pop().unwrap().await {
+    //                             return Err(JobError::RPCError(e));
+    //                         }
+    //                     } else {
+    //                         for result in futures::future::join_all(tasks).await {
+    //                             if let Err(e) = result {
+    //                                 return Err(JobError::RPCError(e));
+    //                             }
+    //                         }
+    //                     }
+    //                     Ok(())
+    //                 },
+    //                 Err(e) => {
+    //                     Err(JobError::InvalidConfig(format!("read lib fail {}", e)))
+    //                 }
+    //             }
+    //         },
+    //         Err(e) => {
+    //             Err(JobError::InvalidConfig(format!("open lib file failure: {}", e)))
+    //         }
+    //     }
+    // }
 
     pub async fn submit(
-        &mut self, config: JobConf, job: JobDesc,
+        &mut self, config: JobConf, job: Vec<u8>,
     ) -> Result<BoxStream<'static, Result<Vec<u8>, tonic::Status>>, JobError> {
         let mut remotes = vec![];
         let servers = match config.servers() {
@@ -151,8 +148,6 @@ impl RPCJobClient {
             return Ok(futures::stream::empty().boxed());
         }
 
-        let JobDesc { input, plan, resource } = job;
-
         let conf = JobConfig {
             job_id: config.job_id,
             job_name: config.job_name,
@@ -164,13 +159,13 @@ impl RPCJobClient {
             trace_enable: config.trace_enable,
             servers: Some(servers),
         };
-        let req = JobRequest { conf: Some(conf), source: input, plan, resource };
+        let req = JobRequest { conf: Some(conf), payload: job };
 
         if r_size == 1 {
             match remotes[0].borrow_mut().submit(req).await {
                 Ok(resp) => Ok(resp
                     .into_inner()
-                    .map(|r| r.map(|jr| jr.resp))
+                    .map(|r| r.map(|jr| jr.payload))
                     .boxed()),
                 Err(status) => Err(JobError::RPCError(status)),
             }
@@ -197,7 +192,7 @@ impl RPCJobClient {
                 }
             }
             Ok(futures::stream::select_all(stream_res)
-                .map(|r| r.map(|jr| jr.resp))
+                .map(|r| r.map(|jr| jr.payload))
                 .boxed())
         }
     }

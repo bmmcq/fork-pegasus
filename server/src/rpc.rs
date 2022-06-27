@@ -15,9 +15,7 @@
 
 use std::error::Error;
 use std::fmt::Debug;
-use std::io::Write;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -40,8 +38,7 @@ use tonic::{Code, Request, Response, Status};
 
 use crate::generated::protocol as pb;
 use crate::generated::protocol::job_config::Servers;
-use crate::job::{JobAssembly, JobDesc};
-use crate::pb::{BinaryResource, Empty, Name};
+use crate::job::{JobAssembly};
 
 pub struct RpcSink {
     pub job_id: u64,
@@ -62,9 +59,9 @@ impl RpcSink {
 }
 
 impl FromStream<Vec<u8>> for RpcSink {
-    fn on_next(&mut self, resp: Vec<u8>) -> FnResult<()> {
+    fn on_next(&mut self, payload: Vec<u8>) -> FnResult<()> {
         // todo: use bytes to alleviate copy & allocate cost;
-        let res = pb::JobResponse { job_id: self.job_id, resp };
+        let res = pb::JobResponse { job_id: self.job_id, payload };
         self.tx.send(Ok(res)).ok();
         Ok(())
     }
@@ -112,52 +109,52 @@ impl<P: JobAssembly> pb::job_service_server::JobService for JobServiceImpl<P>
 where
     P: JobAssembly,
 {
-    async fn add_library(&self, request: Request<BinaryResource>) -> Result<Response<Empty>, Status> {
-        let BinaryResource { name, resource } = request.into_inner();
-        let mut path = PathBuf::from("./lib");
-        path.push(&name);
-        path = path.with_extension("so");
-
-        match std::fs::File::create(path.as_path()) {
-            Ok(mut f) => {
-                if let Err(e) = f.write_all(&resource[..]) {
-                    return Err(Status::aborted(format!("write lib failure: {}", e)));
-                }
-                if let Err(e) = f.flush() {
-                    return Err(Status::aborted(format!("write lib failure: {}", e)));
-                }
-            }
-            Err(e) => {
-                return Err(Status::aborted(format!("create lib failure: {}", e)));
-            }
-        }
-        match unsafe { libloading::Library::new(&path) } {
-            Ok(lib) => {
-                info!("add library with name {}", name);
-                if let Some((name, _)) = pegasus::resource::add_global_resource(name, lib) {
-                    return Err(Status::aborted(format!("resource {} already exists;", name)));
-                }
-                Ok(Response::new(Empty {}))
-            }
-            Err(err) => {
-                let msg = format!("fail to load library {:?}", path);
-                error!("{}, caused by {} ;", msg, err);
-                Err(Status::aborted(msg))
-            }
-        }
-    }
-
-    async fn remove_library(&self, request: Request<Name>) -> Result<Response<Empty>, Status> {
-        let name = request.into_inner().name;
-        pegasus::resource::remove_global_resource(&name);
-        Ok(Response::new(Empty {}))
-    }
+    // async fn add_library(&self, request: Request<BinaryResource>) -> Result<Response<Empty>, Status> {
+    //     let BinaryResource { name, resource } = request.into_inner();
+    //     let mut path = PathBuf::from("./lib");
+    //     path.push(&name);
+    //     path = path.with_extension("so");
+    //
+    //     match std::fs::File::create(path.as_path()) {
+    //         Ok(mut f) => {
+    //             if let Err(e) = f.write_all(&resource[..]) {
+    //                 return Err(Status::aborted(format!("write lib failure: {}", e)));
+    //             }
+    //             if let Err(e) = f.flush() {
+    //                 return Err(Status::aborted(format!("write lib failure: {}", e)));
+    //             }
+    //         }
+    //         Err(e) => {
+    //             return Err(Status::aborted(format!("create lib failure: {}", e)));
+    //         }
+    //     }
+    //     match unsafe { libloading::Library::new(&path) } {
+    //         Ok(lib) => {
+    //             info!("add library with name {}", name);
+    //             if let Some((name, _)) = pegasus::resource::add_global_resource(name, lib) {
+    //                 return Err(Status::aborted(format!("resource {} already exists;", name)));
+    //             }
+    //             Ok(Response::new(Empty {}))
+    //         }
+    //         Err(err) => {
+    //             let msg = format!("fail to load library {:?}", path);
+    //             error!("{}, caused by {} ;", msg, err);
+    //             Err(Status::aborted(msg))
+    //         }
+    //     }
+    // }
+    //
+    // async fn remove_library(&self, request: Request<Name>) -> Result<Response<Empty>, Status> {
+    //     let name = request.into_inner().name;
+    //     pegasus::resource::remove_global_resource(&name);
+    //     Ok(Response::new(Empty {}))
+    // }
 
     type SubmitStream = UnboundedReceiverStream<Result<pb::JobResponse, Status>>;
 
     async fn submit(&self, req: Request<pb::JobRequest>) -> Result<Response<Self::SubmitStream>, Status> {
         debug!("accept new request from {:?};", req.remote_addr());
-        let pb::JobRequest { conf, source, plan, resource } = req.into_inner();
+        let pb::JobRequest { conf, mut payload } = req.into_inner();
         if conf.is_none() {
             return Err(Status::new(Code::InvalidArgument, "job configuration not found"));
         }
@@ -172,14 +169,14 @@ where
         }
         let job_id = conf.job_id;
         let service = &self.inner;
-        let job = JobDesc { input: source, plan, resource };
 
-        if let Err(e) = pegasus::run_opt(conf, sink, move |worker| service.assemble(&job, worker)) {
+        if let Err(e) = pegasus::run_opt(conf, sink, move |worker| service.assemble(&mut payload, worker)) {
             error!("submit job {} failure: {:?}", job_id, e);
             Err(Status::unknown(format!("submit job error {}", e)))
         } else {
             Ok(Response::new(UnboundedReceiverStream::new(rx)))
         }
+
     }
 }
 

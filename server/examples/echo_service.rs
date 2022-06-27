@@ -1,7 +1,7 @@
 use log::info;
 use pegasus::api::Sink;
 use pegasus::{BuildJobError, JobConf, ServerConf, Worker};
-use pegasus_server::job::{JobAssembly, JobDesc};
+use pegasus_server::job::{JobAssembly};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -27,10 +27,11 @@ struct Config {
 struct EchoJobParser;
 
 impl JobAssembly for EchoJobParser {
-    fn assemble(&self, job: &JobDesc, worker: &mut Worker<Vec<u8>, Vec<u8>>) -> Result<(), BuildJobError> {
+    fn assemble(&self, job: &mut Vec<u8>, worker: &mut Worker<Vec<u8>, Vec<u8>>) -> Result<(), BuildJobError> {
         worker.dataflow(|input, output| {
+            let src = std::mem::replace(job, vec![]);
             input
-                .input_from(Some(job.input.clone()))?
+                .input_from(Some(src))?
                 .sink_into(output)
         })
     }
@@ -123,9 +124,7 @@ async fn main() {
         for i in 0..config.times {
             let mut conf = JobConf::with_id(i + 1, "Echo example", 1);
             conf.reset_servers(ServerConf::All);
-            let mut job_desc = JobDesc::default();
-            job_desc.set_input(vec![8u8; 8]);
-            let result = client.submit(conf, job_desc).await.unwrap();
+            let result = client.submit(conf, vec![8u8; 8]).await.unwrap();
             let result_set: Result<Vec<Vec<u8>>, tonic::Status> = result.collect().await;
             let result_set = result_set.unwrap();
             assert_eq!(result_set.len(), servers);
