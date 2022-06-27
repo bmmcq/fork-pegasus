@@ -12,7 +12,9 @@
 //! WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
-
+#![allow(dead_code)]
+#![allow(unused_variables)]
+#![allow(unused_imports)]
 use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::sync::Arc;
@@ -69,6 +71,7 @@ impl<D: Data> Limit<D> for Stream<D> {
 
 impl<D: Data + Ord> SortLimit<D> for Stream<D> {
     fn sort_limit(self, size: u32) -> Result<Stream<D>, BuildJobError> {
+        // TODO:
         self.sort_limit_by(size, |x, y| x.cmp(y))
     }
 }
@@ -76,7 +79,7 @@ impl<D: Data + Ord> SortLimit<D> for Stream<D> {
 impl<D: Data> SortLimitBy<D> for Stream<D> {
     fn sort_limit_by<F>(self, size: u32, cmp: F) -> Result<Stream<D>, BuildJobError>
     where
-        F: Fn(&D, &D) -> Ordering + Send + 'static,
+        F: Fn(&D, &D) -> Ordering + Send + Sync + 'static,
     {
         let cmp = ShadeCmp { cmp: Arc::new(cmp) };
         let cmp_clone = cmp.clone();
@@ -131,7 +134,7 @@ fn sort_limit_by_partition<D: Data, F>(
     stream: Stream<D>, name: &str, size: u32, cmp: ShadeCmp<F>,
 ) -> Result<Stream<D>, BuildJobError>
 where
-    F: Fn(&D, &D) -> Ordering + Send + 'static,
+    F: Fn(&D, &D) -> Ordering + Send + Sync + 'static,
 {
     if size == 0 {
         stream.limit(0)

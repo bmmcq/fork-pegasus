@@ -2,7 +2,7 @@
 name = "pegasus_server"
 version = "0.1.0"
 authors = ["chenqiang.mcq <chenqiang.mcq@alibaba-inc.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 pegasus_common = { path = "../common" }

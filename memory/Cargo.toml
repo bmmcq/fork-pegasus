@@ -2,7 +2,7 @@
 name = "pegasus_memory"
 version = "0.1.0"
 authors = ["chenqiang.mcq <chenqiang.mcq@alibaba-inc.com>"]
-edition = "2018"
+edition = "2021"
 
 [features]
 default = []

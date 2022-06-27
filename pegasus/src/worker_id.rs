@@ -183,7 +183,7 @@ macro_rules! info_worker {
         inspect_worker!(log::Level::Info, $arg0);
     );
     ($arg0: expr, $($arg:tt)*) => (
-        inspect_worker!(log::Level::Info, $arg0, $($arg)*);
+        inspect_worker!(log::Level::Info, $arg0, $($arg)*)
     )
 }
 
@@ -203,7 +203,7 @@ macro_rules! trace_worker {
         inspect_worker!(log::Level::Trace, $arg0);
     );
     ($arg0: expr, $($arg:tt)*) => (
-        inspect_worker!(log::Level::Trace, $arg0, $($arg)*);
+        inspect_worker!(log::Level::Trace, $arg0, $($arg)*)
     )
 }
 
@@ -246,7 +246,7 @@ macro_rules! error_worker {
         inspect_worker!(log::Level::Error, $arg0);
     );
     ($arg0: expr, $($arg:tt)*) => (
-        inspect_worker_error!(log::Level::Error, $arg0, $($arg)*);
+        inspect_worker_error!(log::Level::Error, $arg0, $($arg)*)
     )
 }
 
@@ -256,6 +256,6 @@ macro_rules! warn_worker {
         inspect_worker!(log::Level::Warn, $arg0);
     );
     ($arg0: expr, $($arg:tt)*) => (
-        inspect_worker_error!(log::Level::Warn, $arg0, $($arg)*);
+        inspect_worker_error!(log::Level::Warn, $arg0, $($arg)*)
     )
 }

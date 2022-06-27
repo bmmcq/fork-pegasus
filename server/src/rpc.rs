@@ -104,7 +104,7 @@ impl Drop for RpcSink {
 #[derive(Clone)]
 pub struct JobServiceImpl<P> {
     inner: Arc<P>,
-    report: bool,
+    _report: bool,
 }
 
 #[tonic::async_trait]
@@ -250,7 +250,7 @@ where
     P: JobAssembly,
     E: ServiceStartListener,
 {
-    let service = JobServiceImpl { inner: Arc::new(assemble), report: true };
+    let service = JobServiceImpl { inner: Arc::new(assemble), _report: true };
     let server = RPCJobServer::new(rpc_config, service);
     server.run(server_id, listener).await?;
     Ok(())
