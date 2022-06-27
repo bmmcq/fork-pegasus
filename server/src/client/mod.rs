@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::fmt::{Debug, Display, Formatter};
 use std::pin::Pin;
 use std::task::{Context, Poll};
+
 use futures::stream::{BoxStream, SelectAll};
 use futures::{Stream, StreamExt};
 use pegasus::{JobConf, ServerConf};

@@ -1,7 +1,9 @@
 use pegasus::{BuildJobError, Worker};
 
 pub trait JobAssembly: Send + Sync + 'static {
-    fn assemble(&self, job: &mut Vec<u8>, worker: &mut Worker<Vec<u8>, Vec<u8>>) -> Result<(), BuildJobError>;
+    fn assemble(
+        &self, job: &mut Vec<u8>, worker: &mut Worker<Vec<u8>, Vec<u8>>,
+    ) -> Result<(), BuildJobError>;
 }
 
 // pub struct DynLibraryAssembly;

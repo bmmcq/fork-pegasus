@@ -213,11 +213,11 @@ pub fn shutdown_all() {
     pegasus_executor::await_termination();
 }
 
-pub fn run<DI, DO, F, FN>(conf: JobConf, func: F) -> Result<ResultStream<DO>, JobSubmitError>
+pub fn run<DI, DO, F, FN>(conf: JobConf, mut func: F) -> Result<ResultStream<DO>, JobSubmitError>
 where
     DI: Data,
     DO: Debug + Send + 'static,
-    F: Fn() -> FN,
+    F: FnMut() -> FN,
     FN: FnOnce(&mut Source<DI>, ResultSink<DO>) -> Result<(), BuildJobError> + 'static,
 {
     let (tx, rx) = crossbeam_channel::unbounded();
@@ -229,13 +229,13 @@ where
 }
 
 pub fn run_with_resources<DI, DO, F, FN, R>(
-    conf: JobConf, mut resource: R, func: F,
+    conf: JobConf, mut resource: R, mut func: F,
 ) -> Result<ResultStream<DO>, JobSubmitError>
 where
     DI: Data,
     DO: Debug + Send + 'static,
     R: PartitionedResource,
-    F: Fn() -> FN,
+    F: FnMut() -> FN,
     FN: FnOnce(&mut Source<DI>, ResultSink<DO>) -> Result<(), BuildJobError> + 'static,
 {
     let (tx, rx) = crossbeam_channel::unbounded();

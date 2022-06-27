@@ -1,11 +1,12 @@
-use log::info;
-use pegasus::api::Sink;
-use pegasus::{BuildJobError, JobConf, ServerConf, Worker};
-use pegasus_server::job::{JobAssembly};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Instant;
+
+use log::info;
+use pegasus::api::Sink;
+use pegasus::{BuildJobError, JobConf, ServerConf, Worker};
+use pegasus_server::job::JobAssembly;
 use structopt::StructOpt;
 use tokio_stream::StreamExt;
 
@@ -27,12 +28,12 @@ struct Config {
 struct EchoJobParser;
 
 impl JobAssembly for EchoJobParser {
-    fn assemble(&self, job: &mut Vec<u8>, worker: &mut Worker<Vec<u8>, Vec<u8>>) -> Result<(), BuildJobError> {
+    fn assemble(
+        &self, job: &mut Vec<u8>, worker: &mut Worker<Vec<u8>, Vec<u8>>,
+    ) -> Result<(), BuildJobError> {
         worker.dataflow(|input, output| {
             let src = std::mem::replace(job, vec![]);
-            input
-                .input_from(Some(src))?
-                .sink_into(output)
+            input.input_from(Some(src))?.sink_into(output)
         })
     }
 }
