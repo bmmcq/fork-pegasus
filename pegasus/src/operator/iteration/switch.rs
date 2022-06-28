@@ -151,7 +151,14 @@ impl<D: Data> OperatorCore for SwitchOperator<D> {
                             }
                             enter.notify_end(end)?;
                         } else {
-                            warn_worker!("{:?} not end while {:?} leave iteration;", p, batch.tag);
+                            // Iteration stream exhausted before it's end signal notified; It usually
+                            // occurs when the iteration is in a 'apply' body, and each sub-scope iteration
+                            // can finish with less coordinate than it's parent scope;
+
+                            // It may be very infrequent, because the iteration mostly should take
+                            // more time to do the user-defined progress than the finish coordinating;
+                            debug_worker!("{:?} not end while {:?} leave iteration;", p, batch.tag);
+                            // So if it happens, restore the state for later use;
                             self.iterate_states.insert(p, state);
                         }
                     } else {
