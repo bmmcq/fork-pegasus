@@ -1,21 +1,5 @@
-use std::net::SocketAddr;
-
 use crate::job::JobAssembly;
-use crate::rpc::{RPCServerConfig, ServiceStartListener};
-
-struct StandaloneServiceListener;
-
-impl ServiceStartListener for StandaloneServiceListener {
-    fn on_rpc_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
-        info!("RPC server of server[{}] start on {}", server_id, addr);
-        Ok(())
-    }
-
-    fn on_server_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
-        info!("compute server[{}] start on {}", server_id, addr);
-        Ok(())
-    }
-}
+use crate::rpc::{ListenerToInfo, RPCServerConfig};
 
 pub async fn start<P>(
     rpc_config: RPCServerConfig, server_config: pegasus::Configuration, assemble: P,
@@ -29,6 +13,6 @@ where
         vec![]
     };
 
-    crate::rpc::start_all(rpc_config, server_config, assemble, detect, StandaloneServiceListener).await?;
+    crate::rpc::start_all(rpc_config, server_config, assemble, detect, ListenerToInfo).await?;
     Ok(())
 }

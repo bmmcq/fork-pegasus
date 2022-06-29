@@ -235,12 +235,24 @@ where
     if let Some(server_addr) = pegasus::startup_with(server_config, server_detector)? {
         listener.on_server_start(server_id, server_addr)?;
     }
-    start_rpc_server(server_id, rpc_config, assemble, listener).await?;
+    start_rpc_with_listener(server_id, rpc_config, assemble, listener).await?;
+    Ok(())
+}
+
+
+pub async fn start_rpc<P>(
+    server_id: u64, rpc_config: RPCServerConfig, assemble: P) -> Result<(), Box<dyn std::error::Error>>
+    where
+        P: JobAssembly
+{
+    let service = JobServiceImpl { inner: Arc::new(assemble), _report: true };
+    let server = RPCJobServer::new(rpc_config, service);
+    server.run(server_id, ListenerToInfo).await?;
     Ok(())
 }
 
 /// startup rpc server
-pub async fn start_rpc_server<P, E>(
+pub async fn start_rpc_with_listener<P, E>(
     server_id: u64, rpc_config: RPCServerConfig, assemble: P, listener: E,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
@@ -316,6 +328,31 @@ pub trait ServiceStartListener {
 
     fn on_server_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()>;
 }
+
+impl ServiceStartListener for () {
+    fn on_rpc_start(&mut self, _: u64, _: SocketAddr) -> std::io::Result<()> {
+        Ok(())
+    }
+
+    fn on_server_start(&mut self, _: u64, _: SocketAddr) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+pub struct ListenerToInfo;
+
+impl ServiceStartListener for ListenerToInfo {
+    fn on_rpc_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
+        info!("RPC server of server[{}] start on {}", server_id, addr);
+        Ok(())
+    }
+
+    fn on_server_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
+        info!("compute server[{}] start on {}", server_id, addr);
+        Ok(())
+    }
+}
+
 
 pub(crate) struct TcpIncoming {
     inner: AddrIncoming,
