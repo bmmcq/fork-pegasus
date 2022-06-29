@@ -17,7 +17,7 @@ use std::hash::Hasher;
 use std::path::Path;
 
 use ahash::AHasher;
-use pegasus_network::config::NetworkConfig;
+use pegasus_network::config::{NetworkConfig, ServerAddr};
 use serde::Deserialize;
 
 use crate::errors::StartupError;
@@ -45,6 +45,15 @@ impl Configuration {
 
     pub fn singleton() -> Self {
         Configuration { network: None, max_pool_size: None }
+    }
+
+    pub fn new(server_id: u64, servers: Vec<(String, u16)>) -> Self {
+       let network = Some(NetworkConfig::with(server_id, servers.into_iter()
+           .map(|(a, b)| ServerAddr::new(a, b)).collect()));
+        Self {
+            network,
+            max_pool_size: None,
+        }
     }
 
     pub fn server_id(&self) -> u64 {
@@ -76,10 +85,6 @@ pub fn read_from<P: AsRef<Path>>(path: P) -> Result<Configuration, StartupError>
 lazy_static! {
     /// set `true` to enable canceling all descendants' data of the early-stop scope
     pub static ref ENABLE_CANCEL_CHILD: bool = configure_with_default!(bool, "ENABLE_CANCEL_CHILD", true);
-    /// set `true` to enable propagating early-stop to the parent scope out of loop
-    pub static ref LOOP_OPT: bool = configure_with_default!(bool, "LOOP_OPT", true);
-    /// set `true` to enable immediately cleaning the data of ports received signals from all workers
-    pub static ref BRANCH_OPT: bool = configure_with_default!(bool, "BRANCH_OPT", true);
 }
 
 #[derive(Debug, Clone)]
