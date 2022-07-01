@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use pegasus::api::{Iteration, Map, Reduce, Sink};
 use pegasus::resource::DistributedParResource;
-use pegasus::{Configuration, JobConf, ServerConf};
+use pegasus::{Configuration, JobConf, JobServerConf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -18,7 +18,7 @@ struct Config {
     /// the number of partitions to partition the local graph;
     #[structopt(short = "p", default_value = "1")]
     partitions: u32,
-    #[structopt(short = "s", long = "servers")]
+    #[structopt(long = "servers")]
     servers: Option<PathBuf>,
 }
 
@@ -32,12 +32,13 @@ fn main() {
         Configuration::singleton()
     };
     let process_id = server_conf.server_id();
+    let server_size = server_conf.servers_size() as u64;
     pegasus::startup(server_conf).unwrap();
 
     let mut conf = JobConf::new("LR");
     conf.set_workers(config.partitions);
     if config.servers.is_some() {
-        conf.reset_servers(ServerConf::All);
+        conf.reset_servers(JobServerConf::Total(server_size));
     }
 
     let (length, samples) = load_samples(&conf, &config.data_path, process_id as usize).unwrap();

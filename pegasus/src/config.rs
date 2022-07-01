@@ -21,7 +21,6 @@ use pegasus_network::config::{NetworkConfig, ServerAddr};
 use serde::Deserialize;
 
 use crate::errors::StartupError;
-use crate::{get_servers, get_servers_len};
 
 #[macro_export]
 macro_rules! configure_with_default {
@@ -48,12 +47,14 @@ impl Configuration {
     }
 
     pub fn new(server_id: u64, servers: Vec<(String, u16)>) -> Self {
-       let network = Some(NetworkConfig::with(server_id, servers.into_iter()
-           .map(|(a, b)| ServerAddr::new(a, b)).collect()));
-        Self {
-            network,
-            max_pool_size: None,
-        }
+        let network = Some(NetworkConfig::with(
+            server_id,
+            servers
+                .into_iter()
+                .map(|(a, b)| ServerAddr::new(a, b))
+                .collect(),
+        ));
+        Self { network, max_pool_size: None }
     }
 
     pub fn server_id(&self) -> u64 {
@@ -88,26 +89,31 @@ lazy_static! {
 }
 
 #[derive(Debug, Clone)]
-pub enum ServerConf {
-    Local,
-    Partial(Vec<u64>),
-    All,
+pub enum JobServerConf {
+    /// Only server in the list will be used;
+    Select(Vec<u64>),
+    /// specify total 'n' servers will be used;
+    Total(u64)
 }
 
-impl ServerConf {
-    pub fn len(&self) -> usize {
+impl JobServerConf {
+    pub fn server_size(&self) -> usize {
         match self {
-            ServerConf::Local => 0,
-            ServerConf::Partial(v) => v.len(),
-            ServerConf::All => get_servers_len(),
+            JobServerConf::Select(v) => v.len(),
+            JobServerConf::Total(n) => *n as usize
         }
     }
 
-    pub fn get_servers(&self) -> Vec<u64> {
+    pub fn get_server_ids(&self) -> Vec<u64> {
         match self {
-            ServerConf::Local => vec![],
-            ServerConf::Partial(servers) => servers.clone(),
-            ServerConf::All => get_servers(),
+            JobServerConf::Select(list) => list.clone(),
+            JobServerConf::Total(n) => {
+                if *n <= 1 {
+                    vec![]
+                } else {
+                    (0..*n).collect::<Vec<_>>()
+                }
+            }
         }
     }
 }
@@ -131,7 +137,7 @@ pub struct JobConf {
     /// set to print runtime dataflow plan before running;
     pub plan_print: bool,
     /// the id of servers this job will run on;
-    servers: ServerConf,
+    servers: JobServerConf,
     /// set enable trace job run progress;
     pub trace_enable: bool,
     /// optimization factors of early-stop
@@ -161,20 +167,20 @@ impl JobConf {
         self.workers = workers;
     }
 
-    pub fn servers(&self) -> &ServerConf {
+    pub fn servers(&self) -> &JobServerConf {
         &self.servers
     }
 
-    pub fn reset_servers(&mut self, servers: ServerConf) {
+    pub fn reset_servers(&mut self, servers: JobServerConf) {
         self.servers = servers
     }
 
     pub fn total_workers(&self) -> usize {
-        let len = self.servers.len();
+        let len = self.servers.server_size();
         if len == 0 {
             return self.workers as usize;
         } else {
-            self.servers.len() * self.workers as usize
+            self.servers.server_size() * self.workers as usize
         }
     }
 }
@@ -191,7 +197,7 @@ impl Default for JobConf {
             batch_capacity: 64,
             memory_limit: !0u32,
             plan_print,
-            servers: ServerConf::Local,
+            servers: JobServerConf::Total(1),
             trace_enable: false,
             debug: false,
         }

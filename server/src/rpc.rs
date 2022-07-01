@@ -28,7 +28,7 @@ use hyper::server::conn::{AddrIncoming, AddrStream};
 use pegasus::api::function::FnResult;
 use pegasus::api::FromStream;
 use pegasus::result::{FromStreamExt, ResultSink};
-use pegasus::{Configuration, JobConf, ServerConf};
+use pegasus::{Configuration, JobConf, JobServerConf};
 use pegasus_network::ServerDetect;
 use serde::Deserialize;
 use tokio::sync::mpsc::UnboundedSender;
@@ -37,7 +37,6 @@ use tonic::transport::Server;
 use tonic::{Code, Request, Response, Status};
 
 use crate::generated::protocol as pb;
-use crate::generated::protocol::job_config::Servers;
 use crate::job::JobAssembly;
 
 pub struct RpcSink {
@@ -61,7 +60,7 @@ impl RpcSink {
 impl FromStream<Vec<u8>> for RpcSink {
     fn on_next(&mut self, payload: Vec<u8>) -> FnResult<()> {
         // todo: use bytes to alleviate copy & allocate cost;
-        let res = pb::JobResponse { job_id: self.job_id, payload };
+        let res = pb::JobResponse { payload };
         self.tx.send(Ok(res)).ok();
         Ok(())
     }
@@ -109,47 +108,6 @@ impl<P: JobAssembly> pb::job_service_server::JobService for JobServiceImpl<P>
 where
     P: JobAssembly,
 {
-    // async fn add_library(&self, request: Request<BinaryResource>) -> Result<Response<Empty>, Status> {
-    //     let BinaryResource { name, resource } = request.into_inner();
-    //     let mut path = PathBuf::from("./lib");
-    //     path.push(&name);
-    //     path = path.with_extension("so");
-    //
-    //     match std::fs::File::create(path.as_path()) {
-    //         Ok(mut f) => {
-    //             if let Err(e) = f.write_all(&resource[..]) {
-    //                 return Err(Status::aborted(format!("write lib failure: {}", e)));
-    //             }
-    //             if let Err(e) = f.flush() {
-    //                 return Err(Status::aborted(format!("write lib failure: {}", e)));
-    //             }
-    //         }
-    //         Err(e) => {
-    //             return Err(Status::aborted(format!("create lib failure: {}", e)));
-    //         }
-    //     }
-    //     match unsafe { libloading::Library::new(&path) } {
-    //         Ok(lib) => {
-    //             info!("add library with name {}", name);
-    //             if let Some((name, _)) = pegasus::resource::add_global_resource(name, lib) {
-    //                 return Err(Status::aborted(format!("resource {} already exists;", name)));
-    //             }
-    //             Ok(Response::new(Empty {}))
-    //         }
-    //         Err(err) => {
-    //             let msg = format!("fail to load library {:?}", path);
-    //             error!("{}, caused by {} ;", msg, err);
-    //             Err(Status::aborted(msg))
-    //         }
-    //     }
-    // }
-    //
-    // async fn remove_library(&self, request: Request<Name>) -> Result<Response<Empty>, Status> {
-    //     let name = request.into_inner().name;
-    //     pegasus::resource::remove_global_resource(&name);
-    //     Ok(Response::new(Empty {}))
-    // }
-
     type SubmitStream = UnboundedReceiverStream<Result<pb::JobResponse, Status>>;
 
     async fn submit(&self, req: Request<pb::JobRequest>) -> Result<Response<Self::SubmitStream>, Status> {
@@ -239,11 +197,11 @@ where
     Ok(())
 }
 
-
 pub async fn start_rpc<P>(
-    server_id: u64, rpc_config: RPCServerConfig, assemble: P) -> Result<(), Box<dyn std::error::Error>>
-    where
-        P: JobAssembly
+    server_id: u64, rpc_config: RPCServerConfig, assemble: P,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    P: JobAssembly,
 {
     let service = JobServiceImpl { inner: Arc::new(assemble), _report: true };
     let server = RPCJobServer::new(rpc_config, service);
@@ -353,7 +311,6 @@ impl ServiceStartListener for ListenerToInfo {
     }
 }
 
-
 pub(crate) struct TcpIncoming {
     inner: AddrIncoming,
 }
@@ -375,7 +332,7 @@ impl Stream for TcpIncoming {
     }
 }
 
-fn parse_conf_req(mut req: pb::JobConfig) -> JobConf {
+fn parse_conf_req(req: pb::JobConfig) -> JobConf {
     let mut conf = JobConf::new(req.job_name);
     if req.job_id != 0 {
         conf.job_id = req.job_id;
@@ -402,17 +359,8 @@ fn parse_conf_req(mut req: pb::JobConfig) -> JobConf {
         conf.plan_print = true;
     }
 
-    if let Some(servers) = req.servers.take() {
-        match servers {
-            Servers::Local(_) => conf.reset_servers(ServerConf::Local),
-            Servers::Part(mut p) => {
-                if !p.servers.is_empty() {
-                    let vec = std::mem::replace(&mut p.servers, vec![]);
-                    conf.reset_servers(ServerConf::Partial(vec))
-                }
-            }
-            Servers::All(_) => conf.reset_servers(ServerConf::All),
-        }
+    if !req.servers.is_empty() {
+        conf.reset_servers(JobServerConf::Select(req.servers))
     }
     conf
 }

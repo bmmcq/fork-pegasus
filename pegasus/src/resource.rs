@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crossbeam_utils::sync::ShardedLock;
 
-use crate::{JobConf, ServerConf};
+use crate::{JobConf};
 
 pub type ResourceMap = HashMap<TypeId, Box<dyn Any + Send>>;
 pub type KeyedResources = HashMap<String, Box<dyn Any + Send>>;
@@ -360,11 +360,7 @@ impl<T> DistributedParResource<T> {
                 partitions.push(Some(r));
             }
             let server_conf = conf.servers();
-            let servers = match server_conf {
-                ServerConf::Local => vec![0],
-                ServerConf::Partial(ids) => ids.clone(),
-                ServerConf::All => crate::get_servers(),
-            };
+            let servers = server_conf.get_server_ids();
             let mut start_index = 0 as usize;
             if !servers.is_empty() && (servers.len() > 1) {
                 if let Some(my_id) = crate::server_id() {

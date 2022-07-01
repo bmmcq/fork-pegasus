@@ -55,7 +55,7 @@ use std::collections::HashSet;
 use std::fmt::Debug;
 use std::net::SocketAddr;
 
-pub use config::{read_from, Configuration, JobConf, ServerConf};
+pub use config::{read_from, Configuration, JobConf, JobServerConf};
 pub use data::Data;
 pub use pegasus_common::codec;
 pub use pegasus_memory::alloc::check_current_task_memory;
@@ -121,13 +121,9 @@ fn set_server_id(server_id: u64) -> Option<u64> {
     }
 }
 
-pub fn wait_servers_ready(server_conf: &ServerConf) {
+pub fn wait_servers_ready(server_conf: &JobServerConf) {
     if let Some(local) = server_id() {
-        let remotes = match server_conf {
-            ServerConf::Local => vec![],
-            ServerConf::Partial(s) => s.clone(),
-            ServerConf::All => get_servers(),
-        };
+        let remotes = server_conf.get_server_ids();
         if !remotes.is_empty() {
             while !pegasus_network::check_ipc_ready(local, &remotes) {
                 std::thread::sleep(std::time::Duration::from_millis(100));
@@ -294,13 +290,7 @@ where
 #[inline]
 fn allocate_local_worker(conf: &Arc<JobConf>) -> Result<Option<WorkerIdIter>, BuildJobError> {
     let server_conf = conf.servers();
-    let servers = match server_conf {
-        ServerConf::Local => {
-            return Ok(Some(WorkerIdIter::new(conf.job_id, conf.workers, 0, 0, 1)));
-        }
-        ServerConf::Partial(ids) => ids.clone(),
-        ServerConf::All => get_servers(),
-    };
+    let servers = server_conf.get_server_ids();
 
     if servers.is_empty() || (servers.len() == 1) {
         Ok(Some(WorkerIdIter::new(conf.job_id, conf.workers, 0, 0, 1)))

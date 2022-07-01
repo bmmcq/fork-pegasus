@@ -16,8 +16,6 @@
 #[macro_use]
 extern crate log;
 
-use pegasus::Data;
-
 #[cfg(not(feature = "gcip"))]
 mod generated {
     pub mod protocol {
@@ -34,7 +32,7 @@ mod generated {
 
 pub use generated::protocol as pb;
 
-pub trait AnyData: Data + Eq {}
+pub type ServerId = u64;
 
 // pub mod client;
 pub mod client;

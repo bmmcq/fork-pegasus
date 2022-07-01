@@ -105,7 +105,7 @@ use inter_processes::{CombinationPull, RemotePush};
 use intra_process::{IntraProcessPull, IntraProcessPush};
 use intra_thread::{ThreadPull, ThreadPush};
 
-use crate::config::ServerConf;
+use crate::config::JobServerConf;
 
 #[enum_dispatch(Push<T>)]
 pub enum GeneralPush<T: Data> {
@@ -189,10 +189,10 @@ pub fn build_local_channels<T: Data>(id: ChannelId, workers: usize) -> LinkedLis
 }
 
 pub fn build_channels<T: Data>(
-    id: ChannelId, local_workers: u32, server_index: u32, server_conf: &ServerConf,
+    id: ChannelId, local_workers: u32, server_index: u32, server_conf: &JobServerConf,
 ) -> Result<LinkedList<ChannelResource<T>>, BuildJobError> {
     let workers = local_workers as usize;
-    let servers = server_conf.get_servers();
+    let servers = server_conf.get_server_ids();
     if servers.is_empty() {
         return Ok(build_local_channels(id, workers));
     }
@@ -379,7 +379,7 @@ mod test {
         run_channel_test(0, 3, &mut resources);
     }
 
-    fn channel_test(ch_index: usize, workers: usize, server_index: usize, servers: &ServerConf) {
+    fn channel_test(ch_index: usize, workers: usize, server_index: usize, servers: &JobServerConf) {
         let mut ch_resources = build_channels(
             ChannelId::new(1, ch_index as u32),
             workers as u32,
@@ -387,7 +387,7 @@ mod test {
             servers,
         )
         .unwrap();
-        let servers_len = servers.len();
+        let servers_len = servers.server_size();
         if servers_len == 0 {
             run_channel_test(0, workers, &mut ch_resources);
         } else {
@@ -399,7 +399,7 @@ mod test {
 
     #[test]
     fn test_channel_empty_server() {
-        channel_test(1, 2, 0, &ServerConf::Local);
+        channel_test(1, 2, 0, &JobServerConf::Local);
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod test {
                 println!("start server 0");
                 pegasus_network::start_up(0, ConnectionParams::nonblocking(), "127.0.0.1:2333", servers_bk)
                     .unwrap();
-                let server_conf = ServerConf::Partial(vec![0, 1]);
+                let server_conf = JobServerConf::Partial(vec![0, 1]);
                 while !pegasus_network::check_ipc_ready(0, &vec![0, 1]) {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
@@ -433,7 +433,7 @@ mod test {
                 while !pegasus_network::check_ipc_ready(0, &vec![0, 1]) {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
-                let server_conf = ServerConf::Partial(vec![0, 1]);
+                let server_conf = JobServerConf::Partial(vec![0, 1]);
                 channel_test(2, 3, 1, &server_conf);
                 pegasus_network::shutdown(1);
             })
@@ -471,7 +471,7 @@ mod test {
                 }
                 let worker_id = index as usize;
                 let local_workers = 1;
-                let server_conf = ServerConf::Partial(vec![2, 3]);
+                let server_conf = JobServerConf::Partial(vec![2, 3]);
                 let mut ch_resources_first = build_channels::<Vec<u64>>(
                     ChannelId::new(1, 0),
                     local_workers,
@@ -576,7 +576,7 @@ mod test {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 let local_workers = 2;
-                let server_conf = ServerConf::Partial(vec![4, 5]);
+                let server_conf = JobServerConf::Partial(vec![4, 5]);
                 let mut ch_resources = build_channels::<Vec<u64>>(
                     ChannelId::new(2, 0),
                     local_workers,

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use pegasus::api::{CorrelatedSubTask, Count, Map, Sink};
-use pegasus::{Configuration, JobConf, ServerConf};
+use pegasus::{Configuration, JobConf, JobServerConf};
 use structopt::StructOpt;
 
 /// This query begin from a set of sampling vertices (number specified by `source`)
@@ -32,19 +32,20 @@ struct Config {
     concurrent: u32,
     #[structopt(short = "b", default_value = "64")]
     batch_width: u32,
-    #[structopt(short = "m", long = "servers")]
-    servers: Option<PathBuf>,
+    #[structopt(long = "servers")]
+    servers_config: Option<PathBuf>,
 }
 
 fn main() {
     pegasus_common::logs::init_log();
     let config: Config = Config::from_args();
-    let server_conf = if let Some(ref servers) = config.servers {
+    let server_conf = if let Some(ref servers) = config.servers_config {
         let servers = std::fs::read_to_string(servers).unwrap();
         Configuration::parse(&servers).unwrap()
     } else {
         Configuration::singleton()
     };
+    let server_size = server_conf.servers_size() as u64;
     pegasus::startup(server_conf).unwrap();
     let graph = Arc::new(pegasus_graph::load(&config.data_path).unwrap());
     // config job;
@@ -52,8 +53,8 @@ fn main() {
     conf.set_workers(config.partitions);
     conf.batch_capacity = config.batch_width;
 
-    if config.servers.is_some() {
-        conf.reset_servers(ServerConf::All);
+    if config.servers_config.is_some() {
+        conf.reset_servers(JobServerConf::Total(server_size));
     }
 
     let src = graph.sample_vertices(config.source as usize, 0.1);

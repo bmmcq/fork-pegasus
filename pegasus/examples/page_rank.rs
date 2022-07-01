@@ -6,7 +6,7 @@ use crossbeam_queue::ArrayQueue;
 use nohash_hasher::IntMap;
 use pegasus::api::{Fold, IterCondition, Iteration, Map, Reduce, Sink};
 use pegasus::resource::DefaultParResource;
-use pegasus::{Configuration, JobConf, ServerConf};
+use pegasus::{Configuration, JobConf, JobServerConf};
 use pegasus_graph::{topo::Neighbors, MemIdTopoGraph};
 use structopt::StructOpt;
 
@@ -31,7 +31,7 @@ struct Config {
     /// the number of partitions to partition the local graph;
     #[structopt(short = "p", default_value = "1")]
     partitions: u32,
-    #[structopt(short = "s", long = "servers")]
+    #[structopt(long = "servers")]
     servers: Option<PathBuf>,
 }
 
@@ -94,11 +94,12 @@ fn main() {
     } else {
         Configuration::singleton()
     };
+    let server_size = server_conf.servers_size() as u64;
     pegasus::startup(server_conf).unwrap();
     let mut conf = JobConf::new("page_rank");
     conf.set_workers(config.partitions);
     if config.servers.is_some() {
-        conf.reset_servers(ServerConf::All);
+        conf.reset_servers(JobServerConf::Total(server_size));
     }
 
     let resources = prepare_resources(&config, &conf);

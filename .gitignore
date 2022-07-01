@@ -1,3 +1,5 @@
 .idea
 **/target
 *.dot
+*.log
+**/generated

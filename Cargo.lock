@@ -1048,9 +1048,11 @@ dependencies = [
 name = "pegasus_server"
 version = "0.1.0"
 dependencies = [
+ "ahash",
  "crossbeam-utils 0.6.6",
  "futures",
  "hyper",
+ "lazy_static",
  "log",
  "pegasus",
  "pegasus_common",
