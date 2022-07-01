@@ -9,7 +9,6 @@ use pegasus::api::Sink;
 use pegasus::{BuildJobError, Configuration, JobConf, JobServerConf, Worker};
 use pegasus_server::job::JobAssembly;
 use pegasus_server::rpc::RPCServerConfig;
-use pegasus_server::JobResponse;
 use structopt::StructOpt;
 use tokio_stream::StreamExt;
 
@@ -60,11 +59,11 @@ async fn main() {
             let mut conf = JobConf::with_id(i + 1, "Echo example", 1);
             conf.reset_servers(JobServerConf::Total(servers_size as u64));
             let result = client.submit(conf, vec![8u8; 8]).await.unwrap();
-            let result_set: Result<Vec<JobResponse>, tonic::Status> = result.collect().await;
+            let result_set: Result<Vec<Vec<u8>>, tonic::Status> = result.collect().await;
             let result_set = result_set.unwrap();
             assert_eq!(result_set.len(), servers_size);
             for res in result_set {
-                assert_eq!(res.payload, vec![8u8; 8]);
+                assert_eq!(res, vec![8u8; 8]);
             }
         }
         println!("finish {} echo request, used {:?};", config.times, start.elapsed());

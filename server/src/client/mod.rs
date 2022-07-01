@@ -145,12 +145,16 @@ impl JobResponseStream {
 }
 
 impl Stream for JobResponseStream {
-    type Item = Result<JobResponse, tonic::Status>;
+    type Item = Result<Vec<u8>, tonic::Status>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match *self {
-            JobResponseStream::Single(ref mut s) => Pin::new(s).poll_next(cx),
-            JobResponseStream::Select(ref mut s) => Pin::new(s).poll_next(cx),
+            JobResponseStream::Single(ref mut s) => {
+                Pin::new(s).poll_next(cx).map_ok(|r| r.payload)
+            },
+            JobResponseStream::Select(ref mut s) => {
+                Pin::new(s).poll_next(cx).map_ok(|r| r.payload)
+            },
         }
     }
 }
