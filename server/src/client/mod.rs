@@ -2,22 +2,25 @@ use std::collections::HashMap;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures::stream::{SelectAll};
-use futures::{Stream};
+use futures::stream::SelectAll;
+use futures::Stream;
 use pegasus::{JobConf, JobServerConf};
 use tonic::Streaming;
 
+use crate::client::connection::Connection;
 use crate::pb::{JobConfig, JobRequest};
-use crate::client::connection::{Connection};
 use crate::JobResponse;
 
 mod connection;
 mod errors;
 
-pub use errors::JobExecError;
 pub use connection::ServerAddrTable;
+pub use errors::JobExecError;
 
-pub fn set_up<T>(addr_table: T) where T: ServerAddrTable {
+pub fn set_up<T>(addr_table: T)
+where
+    T: ServerAddrTable,
+{
     crate::client::connection::set_server_addr_table(addr_table)
 }
 
@@ -28,12 +31,13 @@ pub struct JobClient {
 }
 
 impl JobClient {
-
     pub fn new() -> Self {
         JobClient { cached_conns: HashMap::new(), submit_cnt: 0, is_closed: false }
     }
 
-    pub async fn submit(&mut self, mut config: JobConf, job: Vec<u8>) -> Result<JobResponseStream, JobExecError> {
+    pub async fn submit(
+        &mut self, mut config: JobConf, job: Vec<u8>,
+    ) -> Result<JobResponseStream, JobExecError> {
         let mut conf: JobConfig = JobConfig::default();
         conf.job_id = config.job_id;
         std::mem::swap(&mut config.job_name, &mut conf.job_name);
@@ -63,7 +67,7 @@ impl JobClient {
                 }
             }
             JobServerConf::Total(n) => {
-                if *n == 0  {
+                if *n == 0 {
                     return Err(JobExecError::InvalidConfig("server size can't be 0".to_owned()));
                 }
 
@@ -96,10 +100,15 @@ impl JobClient {
         }
 
         let conn = crate::client::connection::get_connection(server_id).await?;
-        Ok(self.cached_conns.entry(server_id).or_insert(conn))
+        Ok(self
+            .cached_conns
+            .entry(server_id)
+            .or_insert(conn))
     }
 
-    async fn multi_submit(&mut self, servers: &[u64], req: JobRequest) -> Result<JobResponseStream, JobExecError> {
+    async fn multi_submit(
+        &mut self, servers: &[u64], req: JobRequest,
+    ) -> Result<JobResponseStream, JobExecError> {
         let mut resp_vec = Vec::new();
         for id in &servers[1..] {
             let conn = self.get_connection(*id).await?;

@@ -93,14 +93,14 @@ pub enum JobServerConf {
     /// Only server in the list will be used;
     Select(Vec<u64>),
     /// specify total 'n' servers will be used;
-    Total(u64)
+    Total(u64),
 }
 
 impl JobServerConf {
     pub fn server_size(&self) -> usize {
         match self {
             JobServerConf::Select(v) => v.len(),
-            JobServerConf::Total(n) => *n as usize
+            JobServerConf::Total(n) => *n as usize,
         }
     }
 

@@ -8,10 +8,10 @@ use std::time::Instant;
 use pegasus::api::Sink;
 use pegasus::{BuildJobError, Configuration, JobConf, JobServerConf, Worker};
 use pegasus_server::job::JobAssembly;
+use pegasus_server::rpc::RPCServerConfig;
+use pegasus_server::JobResponse;
 use structopt::StructOpt;
 use tokio_stream::StreamExt;
-use pegasus_server::JobResponse;
-use pegasus_server::rpc::RPCServerConfig;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "EchoServer", about = "example of rpc service")]
@@ -73,8 +73,9 @@ async fn main() {
     }
 }
 
-
-fn resolve_server_addr(servers_size: usize, config: &Config, server_config: Configuration, rpc_config: RPCServerConfig) -> HashMap<u64, SocketAddr> {
+fn resolve_server_addr(
+    servers_size: usize, config: &Config, server_config: Configuration, rpc_config: RPCServerConfig,
+) -> HashMap<u64, SocketAddr> {
     let mut addr_table = HashMap::new();
     if config.setaddr {
         let mut not_connect = servers_size;

@@ -2,18 +2,20 @@ use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::ops::{Deref, DerefMut};
 use std::time::Instant;
+
 use ahash::AHashMap;
-use crate::pb::job_service_client::JobServiceClient;
 use crossbeam_utils::sync::ShardedLock;
 use lazy_static::lazy_static;
-use crate::ServerId;
 use tokio::sync::Mutex;
+
 use crate::client::errors::ConnectError;
+use crate::pb::job_service_client::JobServiceClient;
+use crate::ServerId;
 
 pub(crate) struct Connection {
     server_id: ServerId,
     server_addr: SocketAddr,
-    client: JobServiceClient<tonic::transport::Channel>
+    client: JobServiceClient<tonic::transport::Channel>,
 }
 
 impl Deref for Connection {
@@ -30,7 +32,7 @@ impl DerefMut for Connection {
     }
 }
 // TODO: maybe async trait;
-pub trait ServerAddrTable : Send + Sync + 'static {
+pub trait ServerAddrTable: Send + Sync + 'static {
     fn get_addr(&self, server_id: ServerId) -> Option<SocketAddr>;
 }
 
@@ -41,13 +43,18 @@ impl ServerAddrTable for HashMap<ServerId, SocketAddr> {
 }
 
 lazy_static! {
-    static ref SERVER_ADDR_TABLE : ShardedLock<Option<Box<dyn ServerAddrTable>>> = ShardedLock::new(None);
-    static ref CONNECTION_MGR : Mutex<ConnectionManager> = Mutex::new(ConnectionManager::new());
+    static ref SERVER_ADDR_TABLE: ShardedLock<Option<Box<dyn ServerAddrTable>>> = ShardedLock::new(None);
+    static ref CONNECTION_MGR: Mutex<ConnectionManager> = Mutex::new(ConnectionManager::new());
 }
 
-pub(crate) fn set_server_addr_table<T>(table: T) where T: ServerAddrTable {
+pub(crate) fn set_server_addr_table<T>(table: T)
+where
+    T: ServerAddrTable,
+{
     let shared_table = Box::new(table);
-    let mut lock = SERVER_ADDR_TABLE.write().expect("address table write lock poisoned");
+    let mut lock = SERVER_ADDR_TABLE
+        .write()
+        .expect("address table write lock poisoned");
     *lock = Some(shared_table)
 }
 
@@ -56,20 +63,26 @@ pub(crate) async fn get_connection(server_id: u64) -> Result<Connection, Connect
     lock.get_connection(server_id).await
 }
 
-pub(crate) async fn recycle<I>(conns: I) where I: IntoIterator<Item = Connection> {
+pub(crate) async fn recycle<I>(conns: I)
+where
+    I: IntoIterator<Item = Connection>,
+{
     let mut lock = CONNECTION_MGR.lock().await;
     for conn in conns {
         lock.recycle_connection(conn);
     }
 }
 
-pub(crate) fn try_recycle<I>(conns: I) where I: IntoIterator<Item = Connection> {
+pub(crate) fn try_recycle<I>(conns: I)
+where
+    I: IntoIterator<Item = Connection>,
+{
     match CONNECTION_MGR.try_lock() {
         Ok(mut locked) => {
             for conn in conns {
                 locked.recycle_connection(conn);
             }
-        },
+        }
         Err(_) => {
             warn!("fail to try recycle connections;")
         }
@@ -90,7 +103,7 @@ fn fetch_latest_addr(server_id: ServerId) -> Result<SocketAddr, ConnectError> {
                 Err(ConnectError::AddrTableNotFount)
             }
         }
-        Err(_) => Err(ConnectError::AddrTableNotFount)
+        Err(_) => Err(ConnectError::AddrTableNotFount),
     }
 }
 
@@ -98,19 +111,13 @@ struct CachedConns {
     server_id: ServerId,
     server_addr: SocketAddr,
     last_check_time: Instant,
-    conns: VecDeque<Connection>
+    conns: VecDeque<Connection>,
 }
 
 impl CachedConns {
-
     fn new(server_id: ServerId) -> Result<Self, ConnectError> {
         let server_addr = fetch_latest_addr(server_id)?;
-        Ok(Self {
-            server_id,
-            server_addr,
-            last_check_time: Instant::now(),
-            conns: VecDeque::new()
-        })
+        Ok(Self { server_id, server_addr, last_check_time: Instant::now(), conns: VecDeque::new() })
     }
 
     async fn get(&mut self) -> Result<Connection, ConnectError> {
@@ -154,7 +161,10 @@ impl CachedConns {
                 Ok(Connection { server_id: self.server_id, server_addr: self.server_addr, client })
             }
             Err(e) => {
-                error!("can't create connection to server {} at {}: {}", self.server_id, self.server_addr, e);
+                error!(
+                    "can't create connection to server {} at {}: {}",
+                    self.server_id, self.server_addr, e
+                );
                 Err(ConnectError::FailConnect(self.server_id, e))
             }
         }
@@ -162,7 +172,7 @@ impl CachedConns {
 }
 
 pub struct ConnectionManager {
-    conns: AHashMap<ServerId, CachedConns>
+    conns: AHashMap<ServerId, CachedConns>,
 }
 
 impl ConnectionManager {
@@ -187,4 +197,3 @@ impl ConnectionManager {
         }
     }
 }
-

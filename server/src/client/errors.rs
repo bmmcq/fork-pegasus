@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+
 use tonic::Status;
+
 use crate::ServerId;
 
 #[derive(Debug)]
@@ -21,7 +23,6 @@ impl Display for JobExecError {
 }
 
 impl Error for JobExecError {}
-
 
 impl From<Status> for JobExecError {
     fn from(e: Status) -> Self {
@@ -48,7 +49,7 @@ impl Display for ConnectError {
     }
 }
 
-impl Error for ConnectError { }
+impl Error for ConnectError {}
 
 impl From<ConnectError> for JobExecError {
     fn from(e: ConnectError) -> Self {

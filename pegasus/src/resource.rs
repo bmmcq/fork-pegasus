@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use crossbeam_utils::sync::ShardedLock;
 
-use crate::{JobConf};
+use crate::JobConf;
 
 pub type ResourceMap = HashMap<TypeId, Box<dyn Any + Send>>;
 pub type KeyedResources = HashMap<String, Box<dyn Any + Send>>;
