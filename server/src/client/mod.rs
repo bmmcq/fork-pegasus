@@ -145,16 +145,18 @@ impl JobResponseStream {
 }
 
 impl Stream for JobResponseStream {
-    type Item = Result<Vec<u8>, tonic::Status>;
+    type Item = Result<Vec<u8>, JobExecError>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match *self {
-            JobResponseStream::Single(ref mut s) => {
-                Pin::new(s).poll_next(cx).map_ok(|r| r.payload)
-            },
-            JobResponseStream::Select(ref mut s) => {
-                Pin::new(s).poll_next(cx).map_ok(|r| r.payload)
-            },
+            JobResponseStream::Single(ref mut s) => Pin::new(s)
+                .poll_next(cx)
+                .map_ok(|r| r.payload)
+                .map_err(|e| JobExecError::ServerError(e)),
+            JobResponseStream::Select(ref mut s) => Pin::new(s)
+                .poll_next(cx)
+                .map_ok(|r| r.payload)
+                .map_err(|e| JobExecError::ServerError(e)),
         }
     }
 }
