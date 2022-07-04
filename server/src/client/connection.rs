@@ -34,11 +34,17 @@ impl DerefMut for Connection {
 // TODO: maybe async trait;
 pub trait ServerAddrTable: Send + Sync + 'static {
     fn get_addr(&self, server_id: ServerId) -> Option<SocketAddr>;
+
+    fn count_servers(&self) -> usize;
 }
 
 impl ServerAddrTable for HashMap<ServerId, SocketAddr> {
     fn get_addr(&self, server_id: ServerId) -> Option<SocketAddr> {
         self.get(&server_id).map(|s| *s)
+    }
+
+    fn count_servers(&self) -> usize {
+        self.len()
     }
 }
 
@@ -56,6 +62,21 @@ where
         .write()
         .expect("address table write lock poisoned");
     *lock = Some(shared_table)
+}
+
+pub(crate) fn count_available_server() -> usize {
+    match SERVER_ADDR_TABLE.try_read() {
+        Ok(lock) => {
+            if let Some(table) = lock.as_ref() {
+                table.count_servers()
+            } else {
+                0
+            }
+        }
+        Err(_) => {
+            0
+        }
+    }
 }
 
 pub(crate) async fn get_connection(server_id: u64) -> Result<Connection, ConnectError> {

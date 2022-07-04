@@ -26,18 +26,21 @@ where
 
 pub struct JobClient {
     cached_conns: HashMap<u64, Connection>,
+    server_size : usize,
     submit_cnt: usize,
     is_closed: bool,
 }
 
 impl JobClient {
     pub fn new() -> Self {
-        JobClient { cached_conns: HashMap::new(), submit_cnt: 0, is_closed: false }
+        let server_size = crate::client::connection::count_available_server();
+        JobClient { cached_conns: HashMap::new(), server_size, submit_cnt: 0, is_closed: false }
     }
 
     pub async fn submit(
         &mut self, mut config: JobConf, job: Vec<u8>,
     ) -> Result<JobResponseStream, JobExecError> {
+        self.submit_cnt += 1;
         let mut conf: JobConfig = JobConfig::default();
         conf.job_id = config.job_id;
         std::mem::swap(&mut config.job_name, &mut conf.job_name);
@@ -57,7 +60,7 @@ impl JobClient {
                 conf.servers = list.clone();
                 let req = JobRequest { conf: Some(conf), payload: job };
                 if list.len() == 1 {
-                    let index = (self.submit_cnt % self.cached_conns.len()) as u64;
+                    let index = (self.submit_cnt % self.server_size) as u64;
                     let conn = self.get_connection(index).await?;
                     let resp = conn.submit(req).await?;
                     let stream = resp.into_inner();
@@ -73,7 +76,7 @@ impl JobClient {
 
                 if *n == 1 {
                     let req = JobRequest { conf: Some(conf), payload: job };
-                    let index = (self.submit_cnt % self.cached_conns.len()) as u64;
+                    let index = (self.submit_cnt % self.server_size) as u64;
                     let conn = self.get_connection(index).await?;
                     let resp = conn.submit(req).await?;
                     let stream = resp.into_inner();
