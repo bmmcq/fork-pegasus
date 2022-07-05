@@ -399,7 +399,7 @@ mod test {
 
     #[test]
     fn test_channel_empty_server() {
-        channel_test(1, 2, 0, &JobServerConf::Local);
+        channel_test(1, 2, 0, &JobServerConf::Total(1));
     }
 
     #[test]
@@ -415,7 +415,7 @@ mod test {
                 println!("start server 0");
                 pegasus_network::start_up(0, ConnectionParams::nonblocking(), "127.0.0.1:2333", servers_bk)
                     .unwrap();
-                let server_conf = JobServerConf::Partial(vec![0, 1]);
+                let server_conf = JobServerConf::Select(vec![0, 1]);
                 while !pegasus_network::check_ipc_ready(0, &vec![0, 1]) {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
@@ -433,7 +433,7 @@ mod test {
                 while !pegasus_network::check_ipc_ready(0, &vec![0, 1]) {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
-                let server_conf = JobServerConf::Partial(vec![0, 1]);
+                let server_conf = JobServerConf::Select(vec![0, 1]);
                 channel_test(2, 3, 1, &server_conf);
                 pegasus_network::shutdown(1);
             })
@@ -471,7 +471,7 @@ mod test {
                 }
                 let worker_id = index as usize;
                 let local_workers = 1;
-                let server_conf = JobServerConf::Partial(vec![2, 3]);
+                let server_conf = JobServerConf::Select(vec![2, 3]);
                 let mut ch_resources_first = build_channels::<Vec<u64>>(
                     ChannelId::new(1, 0),
                     local_workers,
@@ -576,7 +576,7 @@ mod test {
                     std::thread::sleep(std::time::Duration::from_secs(1));
                 }
                 let local_workers = 2;
-                let server_conf = JobServerConf::Partial(vec![4, 5]);
+                let server_conf = JobServerConf::Select(vec![4, 5]);
                 let mut ch_resources = build_channels::<Vec<u64>>(
                     ChannelId::new(2, 0),
                     local_workers,

@@ -247,13 +247,13 @@ impl EndOfScope {
 
     pub fn update_peers(&mut self, mut peers: DynPeers) {
         if peers.value() == 0 {
-            let owner = if self.tag.len() == 0 {
-                0
+            if self.tag.len() == 0 {
+                peers = DynPeers::all();
             } else {
-                let peers = crate::worker_id::get_current_worker().total_peers();
-                self.tag.current_uncheck() % peers
+                let total_peers = crate::worker_id::get_current_worker().total_peers();
+                let owner = self.tag.current_uncheck() % total_peers;
+                peers = DynPeers::single(owner);
             };
-            peers = DynPeers::single(owner);
         }
         trace_worker!("update peers from {:?} to {:?} of scope {:?}", self.peers, peers, self.tag);
         self.peers = peers;
