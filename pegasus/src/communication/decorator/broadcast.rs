@@ -9,6 +9,7 @@ use crate::Data;
 
 pub struct BroadcastBatchPush<D: Data> {
     pub ch_info: ChannelInfo,
+    src: u32,
     pushes: Vec<EventEmitPush<D>>,
     cancel_handle: MultiConsCancelPtr,
 }
@@ -16,7 +17,8 @@ pub struct BroadcastBatchPush<D: Data> {
 impl<D: Data> BroadcastBatchPush<D> {
     pub fn new(ch_info: ChannelInfo, pushes: Vec<EventEmitPush<D>>) -> Self {
         let cancel_handle = MultiConsCancelPtr::new(ch_info.scope_level, pushes.len());
-        BroadcastBatchPush { ch_info, pushes, cancel_handle }
+        let src = crate::worker_id::get_current_worker().index;
+        BroadcastBatchPush { ch_info, src, pushes, cancel_handle }
     }
 
     pub(crate) fn get_cancel_handle(&self) -> CancelHandle {
@@ -37,15 +39,24 @@ impl<D: Data> BroadcastBatchPush<D> {
         }
 
         if let Some(mut end) = batch.take_end() {
-            if end.peers().value() == 1 {
-                end.update_peers(DynPeers::all());
-                batch.set_end(end);
-                self.pushes[target].push(batch)?;
-            } else {
+            if end.tag.is_root() {
                 if !batch.is_empty() {
                     self.pushes[target].push(batch)?;
                 }
                 self.pushes[target].sync_end(end, DynPeers::all())?;
+            } else if end.peers_contains(self.src) {
+                if end.peers().value() == 1 {
+                    end.update_peers(DynPeers::all());
+                    batch.set_end(end);
+                    self.pushes[target].push(batch)?;
+                } else {
+                    if !batch.is_empty() {
+                        self.pushes[target].push(batch)?;
+                    }
+                    self.pushes[target].sync_end(end, DynPeers::all())?;
+                }
+            } else {
+                assert!(batch.is_empty());
             }
         } else {
             self.pushes[target].push(batch)?;
