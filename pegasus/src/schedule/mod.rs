@@ -15,14 +15,14 @@
 
 use std::time::Instant;
 
+use crate::communication::output::OutputAbortNotify;
 use crate::data_plane::GeneralPull;
 use crate::dataflow::Dataflow;
 use crate::errors::{IOResult, JobExecError};
 use crate::event::emitter::{EventCollector, EventEmitter};
 use crate::event::Event;
 use crate::schedule::operator::OperatorScheduler;
-use crate::schedule::state::inbound::InputEndNotify;
-use crate::schedule::state::outbound::OutputCancelState;
+use crate::schedule::state::inbound::EndNotify;
 
 pub(crate) mod operator;
 pub(crate) mod state;
@@ -59,10 +59,10 @@ impl Schedule {
     }
 
     pub fn add_schedule_op(
-        &mut self, index: usize, scope_level: u32, inputs_notify: Vec<Option<Box<dyn InputEndNotify>>>,
-        outputs_cancel: Vec<Option<OutputCancelState>>,
+        &mut self, index: usize, scope_level: u32, inputs_notify: Vec<Option<Box<dyn EndNotify>>>,
+        outputs_notify: Vec<Option<OutputAbortNotify>>,
     ) {
-        let op = OperatorScheduler::new(index, scope_level, inputs_notify, outputs_cancel);
+        let op = OperatorScheduler::new(index, scope_level, inputs_notify, outputs_notify);
         self.sch_ops.push(op);
     }
 

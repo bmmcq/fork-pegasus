@@ -19,12 +19,10 @@ use std::rc::Rc;
 use pegasus_common::downcast::*;
 
 use crate::api::scope::ScopeDelta;
-use crate::communication::cancel::CancelListener;
-use crate::communication::output::output::OutputHandle;
-use crate::communication::output::tee::{PerChannelPush, Tee};
+use crate::communication::output::handle::OutputHandle;
+use crate::communication::output::output::{OutputAbortNotify, Producer};
 use crate::communication::output::{OutputBuilder, OutputProxy, RefWrapOutput};
 use crate::graph::Port;
-use crate::schedule::state::outbound::OutputCancelState;
 use crate::Data;
 
 #[derive(Copy, Clone, Debug)]
@@ -42,12 +40,12 @@ pub struct OutputBuilderImpl<D: Data> {
     ///
     cursor: usize,
     ///
-    shared: Rc<RefCell<Vec<Option<PerChannelPush<D>>>>>,
+    shared: Rc<RefCell<Option<Producer<D>>>>,
 }
 
 impl<D: Data> OutputBuilderImpl<D> {
     pub fn new(port: Port, scope_level: u32, batch_size: usize, batch_capacity: u32) -> Self {
-        let shared = vec![None];
+        let shared = None;
         OutputBuilderImpl {
             meta: Rc::new(RefCell::new(OutputMeta { port, scope_level, batch_size, batch_capacity })),
             cursor: 0,
@@ -86,25 +84,15 @@ impl<D: Data> OutputBuilderImpl<D> {
     }
 
     #[inline]
-    pub(crate) fn set_push(&self, push: PerChannelPush<D>) {
-        self.shared.borrow_mut()[self.cursor] = Some(push);
-    }
-
-    #[inline]
-    pub fn output_size(&self) -> usize {
-        self.shared.borrow().len()
+    pub(crate) fn set_push(&self, push: Producer<D>) {
+        self.shared.borrow_mut().replace(push);
     }
 
     pub fn add_output_delta(&self, delta: ScopeDelta) {
-        if let Some(ref mut p) = self.shared.borrow_mut()[self.cursor] {
+        let mut b = self.shared.borrow_mut();
+        if let Some(p) = b.as_mut() {
             p.delta.add_delta(delta);
         }
-    }
-
-    pub fn copy_data(&self) -> Self {
-        self.shared.borrow_mut().push(None);
-        let cursor = self.shared.borrow().len() - 1;
-        OutputBuilderImpl { meta: self.meta.clone(), cursor, shared: self.shared.clone() }
     }
 }
 
@@ -117,59 +105,16 @@ impl<D: Data> Clone for OutputBuilderImpl<D> {
 impl_as_any!(OutputBuilderImpl<D: Data>);
 
 impl<D: Data> OutputBuilder for OutputBuilderImpl<D> {
-    fn build_cancel_handle(&self) -> Option<OutputCancelState> {
-        let port = self.meta.borrow().port;
-        let scope_level = self.meta.borrow().scope_level;
-
+    fn get_abort_notify(&self) -> Option<OutputAbortNotify> {
         let shared = self.shared.borrow();
-        let size = shared.iter().filter(|x| x.is_some()).count();
-        if size == 0 {
-            None
-        } else if size == 1 {
-            for ch in shared.iter() {
-                if let Some(ch) = ch.as_ref() {
-                    let listener = ch.get_cancel_handle();
-                    let index = ch.ch_info.id.index;
-                    return Some(OutputCancelState::single(port, index, Box::new(listener)));
-                }
-            }
-            None
-        } else {
-            let mut vec = Vec::with_capacity(size);
-            for ch in shared.iter() {
-                if let Some(ch) = ch.as_ref() {
-                    let listener = ch.get_cancel_handle();
-                    let index = ch.ch_info.id.index;
-                    vec.push((index, Box::new(listener) as Box<dyn CancelListener>));
-                }
-            }
-            Some(OutputCancelState::tee(port, scope_level, vec))
-        }
+        shared.as_ref().map(|p| p.get_abort_notify())
     }
 
     fn build(self: Box<Self>) -> Option<Box<dyn OutputProxy>> {
+        let meta = self.meta.borrow();
         let mut shared = self.shared.borrow_mut();
-        let mut main_push = None;
-        for p in shared.iter_mut() {
-            if let Some(push) = p.take() {
-                main_push = Some(push);
-                break;
-            }
-        }
-
-        if let Some(main_push) = main_push {
-            let meta = self.meta.borrow();
-            let mut tee = Tee::<D>::new(meta.port, meta.scope_level, main_push);
-            for p in shared.iter_mut() {
-                if let Some(push) = p.take() {
-                    tee.add_push(push);
-                }
-            }
-
-            let output = OutputHandle::new(*meta, tee);
-            Some(Box::new(RefWrapOutput::wrap(output)) as Box<dyn OutputProxy>)
-        } else {
-            None
-        }
+        let b = shared.take()?;
+        let output = OutputHandle::new(*meta, b);
+        Some(Box::new(RefWrapOutput::wrap(output)) as Box<dyn OutputProxy>)
     }
 }

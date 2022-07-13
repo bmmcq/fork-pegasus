@@ -38,7 +38,6 @@ pub struct MessageSender<T: Send> {
     is_closed: bool,
 }
 
-
 pub struct MessageReceiver<T> {
     inner: Receiver<T>,
     sender_poisoned: Arc<AtomicBool>,

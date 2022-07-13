@@ -43,7 +43,7 @@ impl Decode for I32 {
 
 fn create_src(id: u32, source: &mut Source<i32>) -> Result<(Stream<i32>, Stream<i32>), BuildJobError> {
     let src1 = if id == 0 { source.input_from(1..5)? } else { source.input_from(8..10)? };
-    let (src1, src2) = src1.copied()?;
+    let (src1, src2) = src1.tee()?;
     let src2 = src2.map(|x| Ok(x + 1))?;
     Ok((src1, src2))
 }
@@ -255,7 +255,7 @@ fn join_test_different_tag_outer() {
             let src = input.input_from(1..5)?;
             src.apply(|src1| {
                 let src1 = src1.flat_map(|x| Ok((x * 10)..(x * 11)))?;
-                let (src1, src2) = src1.copied()?;
+                let (src1, src2) = src1.tee()?;
                 let src2 = src2.map(|x| Ok(x + 1))?;
                 let src1 = src1.key_by(|x| Ok((x, x)))?.partition_by_key();
                 let src2 = src2.key_by(|x| Ok((x, x)))?.partition_by_key();
@@ -282,7 +282,7 @@ fn join_test_different_tag_semi() {
             let src = input.input_from(1..5)?;
             src.apply(|src1| {
                 let src1 = src1.flat_map(|x| Ok((x * 10)..(x * 11)))?;
-                let (src1, src2) = src1.copied()?;
+                let (src1, src2) = src1.tee()?;
                 let src2 = src2.map(|x| Ok(x + 1))?;
                 let src1 = src1.key_by(|x| Ok((x, x)))?.partition_by_key();
                 let src2 = src2.key_by(|x| Ok((x, x)))?.partition_by_key();

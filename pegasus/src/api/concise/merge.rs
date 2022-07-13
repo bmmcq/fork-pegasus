@@ -23,7 +23,7 @@ pub trait Merge<D: Data> {
     ///         let id = pegasus::get_current_worker().index;
     ///         move |input, output| {
     ///             let src1 = input.input_from(vec![1, 3, 5, 7, 9])?;
-    ///             let (src1, src2) = src1.copied()?;
+    ///             let (src1, src2) = src1.tee()?;
     ///             src1
     ///                 .merge(src2.map(|d| Ok(d + 1))?)?
     ///                 .collect::<Vec<u32>>()?

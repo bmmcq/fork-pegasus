@@ -55,7 +55,7 @@ use crate::Data;
 ///         move |input, output| {
 ///             // stream {1,2,3}
 ///             let src1 = if id == 0 { input.input_from(1..4)? } else { input.input_from(vec![])? };
-///             let (src1,src2) = src1.copied()?;
+///             let (src1,src2) = src1.tee()?;
 ///             let src2=src2.map(|x| Ok(x + 1))?; // stream {2,3,4}
 ///             src1.key_by(|x| Ok((x, x)))? // use item value as key
 ///                 .inner_join(src2.key_by(|x| Ok((x, x)))?.partition_by_key())? // inner_join two streams

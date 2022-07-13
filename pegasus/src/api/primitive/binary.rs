@@ -52,7 +52,7 @@ pub trait Binary<L: Data> {
     ///         let mut hashmap: HashMap<Tag, DataPair> = HashMap::new();
     ///         move |input, output| {
     ///                 let src1 = input.input_from(vec![1_u32, 2, 3].into_iter())?;
-    ///                 let (src1, src2) = src1.copied()?;
+    ///                 let (src1, src2) = src1.tee()?;
     ///                 let src2 = src2.map(|d| Ok(d + 1))?.repartition(|x| Ok(*x as u64 - 1));
     ///                 src1.repartition(|x| Ok(*x as u64))
     ///                      .binary("binary_operator", src2, |_info| move |in1, in2, out| {    ///

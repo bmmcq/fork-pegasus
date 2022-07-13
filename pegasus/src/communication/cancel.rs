@@ -7,12 +7,12 @@ use crate::communication::Magic;
 use crate::tag::tools::map::TidyTagMap;
 use crate::Tag;
 
-pub trait CancelListener: Send + 'static {
+pub trait AbortNotify: Send + 'static {
     /// invoked by the consumer who won't consume any data of the scope=[`Tag`], and notify the
     /// producer don't produce data of the scope to it;
     ///
     /// this listener is owned by the producer to listen notification from it's consumers;
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag>;
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag>;
 }
 
 /// to local static single consumer cancel;
@@ -28,8 +28,8 @@ impl SingleConsCancel {
     }
 }
 
-impl CancelListener for SingleConsCancel {
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+impl AbortNotify for SingleConsCancel {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
         if to == self.target {
             Some(tag.clone())
         } else {
@@ -103,8 +103,8 @@ impl MultiConsCancel {
     }
 }
 
-impl CancelListener for MultiConsCancel {
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+impl AbortNotify for MultiConsCancel {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
         let level = tag.len() as u32;
         let targets = self.targets;
         let to = to as usize;
@@ -153,7 +153,7 @@ impl MultiConsCancelPtr {
     }
 
     pub fn cancel(&self, tag: &Tag, to: u32) -> Option<Tag> {
-        self.inner.borrow_mut().cancel(tag, to)
+        self.inner.borrow_mut().abort(tag, to)
     }
 
     pub fn is_canceled(&self, tag: &Tag, target: usize) -> bool {
@@ -169,8 +169,8 @@ pub(crate) struct DynSingleConsCancel {
     parent: AHashMap<Tag, Vec<bool>>,
 }
 
-impl CancelListener for DynSingleConsCancel {
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+impl AbortNotify for DynSingleConsCancel {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
         let level = tag.len() as u32;
         if level == self.scope_level {
             assert!(level > 0);
@@ -246,9 +246,9 @@ pub(crate) struct DynSingleConsCancelPtr {
     inner: UnsafeRcPtr<RefCell<DynSingleConsCancel>>,
 }
 
-impl CancelListener for DynSingleConsCancelPtr {
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
-        self.inner.borrow_mut().cancel(tag, to)
+impl AbortNotify for DynSingleConsCancelPtr {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+        self.inner.borrow_mut().abort(tag, to)
     }
 }
 
@@ -287,12 +287,12 @@ impl CancelHandle {
     }
 }
 
-impl CancelListener for CancelHandle {
-    fn cancel(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+impl AbortNotify for CancelHandle {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
         match self {
-            CancelHandle::SC(x) => x.cancel(tag, to),
+            CancelHandle::SC(x) => x.abort(tag, to),
             CancelHandle::MC(x) => x.cancel(tag, to),
-            CancelHandle::DSC(x) => x.cancel(tag, to),
+            CancelHandle::DSC(x) => x.abort(tag, to),
         }
     }
 }

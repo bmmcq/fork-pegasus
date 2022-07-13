@@ -74,7 +74,7 @@ fn flatmap_copied_limit_test() {
                 .input_from(0..100_0000_000u32)?
                 .repartition(|x: &u32| Ok(*x as u64))
                 .flat_map(|i| Ok(0..i + 1))?
-                .copied()?;
+                .tee()?;
 
             let left = left.limit(10)?;
             let right = right.limit(100)?;

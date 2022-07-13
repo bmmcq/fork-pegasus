@@ -18,16 +18,16 @@ use std::cell::{Ref, RefCell};
 use std::collections::VecDeque;
 
 pub(crate) use builder::OutputBuilderImpl;
-pub use output::OutputSession;
+pub use handle::OutputSession;
+pub(crate) use output::Producer;
 use pegasus_common::downcast::AsAny;
-pub(crate) use tee::PerChannelPush;
 
 use crate::communication::decorator::ScopeStreamPush;
-use crate::communication::output::output::OutputHandle;
+use crate::communication::output::handle::OutputHandle;
+pub use crate::communication::output::output::OutputAbortNotify;
 use crate::data::MicroBatch;
 use crate::errors::IOResult;
 use crate::progress::EndOfScope;
-use crate::schedule::state::outbound::OutputCancelState;
 use crate::{Data, Tag};
 
 pub struct BlockScope {
@@ -85,14 +85,14 @@ pub trait OutputProxy: AsAny + Send {
 }
 
 pub trait OutputBuilder: AsAny {
-    fn build_cancel_handle(&self) -> Option<OutputCancelState>;
+    fn get_abort_notify(&self) -> Option<OutputAbortNotify>;
 
     fn build(self: Box<Self>) -> Option<Box<dyn OutputProxy>>;
 }
 
 mod builder;
+mod handle;
 mod output;
-mod tee;
 
 pub struct RefWrapOutput<D: Data> {
     pub(crate) output: RefCell<OutputHandle<D>>,

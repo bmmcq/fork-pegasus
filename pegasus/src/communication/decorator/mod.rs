@@ -52,14 +52,6 @@ pub trait ScopeStreamPush<T: Data> {
     fn close(&mut self) -> IOResult<()>;
 }
 
-pub trait ScopeStreamBuffer {
-    fn scope_size(&self) -> usize;
-
-    fn ensure_capacity(&mut self, tag: &Tag) -> IOResult<usize>;
-
-    fn flush_scope(&mut self, tag: &Tag) -> IOResult<()>;
-}
-
 pub trait BlockPush {
     // try to unblock data on scope, return true if the data is unblocked;
     fn try_unblock(&mut self, tag: &Tag) -> IOResult<bool>;

@@ -92,7 +92,7 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
             self.conf.batch_size as usize,
             self.conf.batch_capacity,
         );
-        let mut input = Source::new(root_builder.copy_data(), &dfb);
+        let mut input = Source::new(root_builder.clone(), &dfb);
         let output = self.sink.clone();
         func(&mut input, output)?;
         let mut sch = Schedule::new(event_emitter, rx);

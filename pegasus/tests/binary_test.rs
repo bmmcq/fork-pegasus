@@ -23,7 +23,7 @@ fn binary_test_01() {
     let mut result = pegasus::run(conf, || {
         |input, output| {
             let stream = input.input_from(vec![1u32; 1000])?;
-            let (left, right) = stream.copied()?;
+            let (left, right) = stream.tee()?;
             let left = left.map(|item| Ok(item + 1))?;
             let right = right.map(|item| Ok(item + 2))?;
             left.binary("merge", right, |_info| {
@@ -67,7 +67,7 @@ fn binary_test_02() {
     let mut result = pegasus::run(conf, || {
         |input, output| {
             let stream = input.input_from(0..1000)?;
-            let (left, right) = stream.copied()?;
+            let (left, right) = stream.tee()?;
             let left = left.map(|item| Ok(item + 1))?;
             let right = right
                 .map(|item| Ok(item + 2))?

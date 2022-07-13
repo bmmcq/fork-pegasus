@@ -13,564 +13,339 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::cell::RefMut;
-use std::collections::VecDeque;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-use pegasus_common::buffer::ReadBuffer;
+use ahash::AHashSet;
 
-use crate::communication::buffer::ScopeBufferPool;
-use crate::communication::decorator::{BlockPush, ScopeStreamPush};
-use crate::communication::output::builder::OutputMeta;
-use crate::communication::output::tee::Tee;
-use crate::communication::output::BlockScope;
+use crate::api::scope::MergedScopeDelta;
+use crate::channel_id::ChannelInfo;
+use crate::communication::cancel::{AbortNotify, CancelHandle};
+use crate::communication::decorator::{BlockPush, MicroBatchPush};
 use crate::communication::IOResult;
 use crate::data::MicroBatch;
 use crate::data_plane::Push;
 use crate::errors::IOError;
-use crate::graph::Port;
-use crate::progress::EndOfScope;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
-enum BlockEntry<D: Data> {
-    Single(D),
-    LastSingle(D, EndOfScope),
-    DynIter(Option<D>, Box<dyn Iterator<Item = D> + Send + 'static>),
+struct ProducerAbortHandle {
+    scope_level: u32,
+    inner: CancelHandle,
+    delta: MergedScopeDelta,
+    /// used to check cancel before evolve and push;
+    before_send: TidyTagMap<()>,
+    parent: AHashSet<Tag>,
 }
 
-pub struct OutputHandle<D: Data> {
-    pub port: Port,
-    pub scope_level: u32,
-    pub src: u32,
-    tee: Tee<D>,
-    buf_pool: ScopeBufferPool<D>,
-    block_entries: TidyTagMap<BlockEntry<D>>,
-    blocks: VecDeque<BlockScope>,
-    seq_emit: TidyTagMap<u64>,
-    is_closed: bool,
-    current_skips: TidyTagMap<()>,
-    parent_skips: TidyTagMap<()>,
-}
-
-impl<D: Data> OutputHandle<D> {
-    pub(crate) fn new(meta: OutputMeta, output: Tee<D>) -> Self {
-        let batch_capacity = meta.batch_capacity as usize;
-        let scope_level = meta.scope_level;
-        debug_worker!(
-            "init output[{:?}] with batch_size={}, batch_capacity={}",
-            meta.port,
-            meta.batch_size,
-            batch_capacity
-        );
-        let buf_pool = ScopeBufferPool::new(meta.batch_size, batch_capacity, scope_level);
-        let src = crate::worker_id::get_current_worker().index;
-        let parent_level = if scope_level == 0 { 0 } else { scope_level - 1 };
-        OutputHandle {
-            port: meta.port,
-            scope_level,
-            src,
-            tee: output,
-            buf_pool,
-            block_entries: TidyTagMap::new(scope_level),
-            blocks: VecDeque::new(),
-            seq_emit: TidyTagMap::new(scope_level),
-            is_closed: false,
-            current_skips: TidyTagMap::new(scope_level),
-            parent_skips: TidyTagMap::new(parent_level),
-        }
-    }
-
-    pub fn push_iter<I: Iterator<Item = D> + Send + 'static>(
-        &mut self, tag: &Tag, mut iter: I,
-    ) -> IOResult<()> {
-        if self.is_skipped(tag) {
-            return Ok(());
-        }
-
-        match self.try_push_iter_inner(tag, &mut iter) {
-            Ok(None) => Ok(()),
-            Ok(Some(item)) => {
-                trace_worker!("output[{:?}] blocked on push iterator of {:?} ;", self.port, tag);
-                self.block_entries
-                    .insert(tag.clone(), BlockEntry::DynIter(Some(item), Box::new(iter)));
-                self.blocks
-                    .push_back(BlockScope::new(tag.clone()));
-                Err(IOError::would_block())
-            }
-            Err(e) => {
-                if e.is_would_block() {
-                    trace_worker!("output[{:?}] blocked on push iterator of {:?} ;", self.port, tag);
-                    self.block_entries
-                        .insert(tag.clone(), BlockEntry::DynIter(None, Box::new(iter)));
-                    self.blocks
-                        .push_back(BlockScope::new(tag.clone()));
-                    Err(IOError::would_block())
-                } else {
-                    Err(e)
-                }
-            }
-        }
-    }
-
-    pub fn push_batch(&mut self, mut batch: MicroBatch<D>) -> IOResult<()> {
-        if self.is_skipped(&batch.tag) {
-            if batch.is_last() {
-                batch.take_data();
-            } else {
-                return Ok(());
-            }
-        }
-
-        self.send_batch(batch)
-    }
-
-    pub fn push_batch_mut(&mut self, batch: &mut MicroBatch<D>) -> IOResult<()> {
-        if self.is_skipped(&batch.tag) {
-            if batch.is_last() {
-                batch.take_data();
-            } else {
-                return Ok(());
-            }
-        }
-        let mut new_batch = MicroBatch::new(batch.tag.clone(), self.src, batch.take_data());
-        if let Some(end) = batch.take_end() {
-            new_batch.set_end(end);
-        }
-        self.send_batch(new_batch)
-    }
-
-    pub fn is_closed(&self) -> bool {
-        self.is_closed
-    }
-
-    pub(crate) fn pin(&mut self, tag: &Tag) {
-        self.buf_pool.pin(tag);
-    }
-
-    pub(crate) fn try_unblock(&mut self) -> IOResult<()> {
-        let len = self.blocks.len();
-        if len > 0 {
-            for _ in 0..len {
-                if let Some(bk) = self.blocks.pop_front() {
-                    trace_worker!("output[{:?}] try to unblock data of {:?};", self.port, bk.tag());
-                    if self.tee.try_unblock(bk.tag())? {
-                        if let Some(iter) = self.block_entries.remove(bk.tag()) {
-                            match iter {
-                                BlockEntry::Single(x) => {
-                                    if let Err(e) = self.push(bk.tag(), x) {
-                                        if e.is_would_block() {
-                                            let b = self.blocks.pop_back().expect("can't be none");
-                                            assert_eq!(b.tag, bk.tag);
-                                            self.blocks.push_back(bk);
-                                        } else {
-                                            return Err(e);
-                                        }
-                                    }
-                                }
-                                BlockEntry::LastSingle(x, e) => {
-                                    self.push_last(x, e)?;
-                                }
-                                BlockEntry::DynIter(head, iter) => {
-                                    if let Some(x) = head {
-                                        if let Err(e) = self.push(bk.tag(), x) {
-                                            if e.is_would_block() {
-                                                if let Some(blocked) = self.block_entries.remove(bk.tag()) {
-                                                    match blocked {
-                                                        BlockEntry::Single(x) => {
-                                                            self.block_entries.insert(
-                                                                bk.tag().clone(),
-                                                                BlockEntry::DynIter(Some(x), iter),
-                                                            );
-                                                        }
-                                                        _ => unreachable!("unexpected blocking;"),
-                                                    }
-                                                } else {
-                                                    self.block_entries.insert(
-                                                        bk.tag().clone(),
-                                                        BlockEntry::DynIter(None, iter),
-                                                    );
-                                                }
-                                                self.blocks.push_back(bk);
-                                            }
-                                            return Err(e);
-                                        }
-                                    }
-
-                                    self.push_box_iter(bk, iter)?;
-                                }
-                            }
-                            // trace_worker!("output[{:?}]: data in scope {:?} unblocked", self.port, tag);
-                        } else {
-                            // trace_worker!("output[{:?}]: data in scope {:?} unblocked", self.port, tag);
-                        }
-                    } else {
-                        self.blocks.push_back(bk);
-                    }
-                }
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn get_blocks(&self) -> &VecDeque<BlockScope> {
-        &self.blocks
-    }
-
-    pub(crate) fn cancel(&mut self, tag: &Tag) -> IOResult<()> {
+impl AbortNotify for ProducerAbortHandle {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+        let tag = self.inner.abort(tag, to)?;
         let level = tag.len() as u32;
-        if level < self.scope_level {
-            //assert_eq!(level + 1, self.scope_level);
-            self.parent_skips.insert(tag.clone(), ());
-            // skip from parent scope;
-            if *crate::config::ENABLE_CANCEL_CHILD {
-                let block_len = self.blocks.len();
-                for _ in 0..block_len {
-                    if let Some(b) = self.blocks.pop_front() {
-                        if tag.is_parent_of(b.tag()) {
-                            if let Some(b) = self.block_entries.remove(b.tag()) {
-                                match b {
-                                    BlockEntry::LastSingle(_, end) => {
-                                        self.notify_end(end)?;
-                                    }
-                                    _ => (),
-                                }
-                            }
-                        } else {
-                            self.blocks.push_back(b);
-                        }
-                    }
-                }
-                self.buf_pool.skip_buf(tag);
-                self.tee.clean_block_of(tag)?;
-            }
-        } else if level == self.scope_level {
-            // skip current scope level;
-            self.current_skips.insert(tag.clone(), ());
-            self.buf_pool.skip_buf(tag);
-            let block_len = self.blocks.len();
-            for _ in 0..block_len {
-                if let Some(b) = self.blocks.pop_front() {
-                    if tag == b.tag() {
-                        trace_worker!(
-                            "output[{:?}] clean blocking data of {:?} as canceled;",
-                            self.port,
-                            b.tag()
-                        );
-                        if let Some(b) = self.block_entries.remove(b.tag()) {
-                            match b {
-                                BlockEntry::LastSingle(_, end) => {
-                                    self.notify_end(end)?;
-                                }
-                                _ => (),
-                            }
-                        }
-                    } else {
-                        self.blocks.push_back(b);
-                    }
-                }
-            }
-            self.tee.clean_block_of(tag)?;
+
+        if self.delta.scope_level_delta() < 0 {
+            // leave: channel send data to parent scope;
+            // cancel from parent scope;
+            assert!(level < self.before_send.scope_level);
+            self.parent.insert(tag.clone());
+            Some(tag.clone())
         } else {
-            // skip from child scopes;
-            // ignore;
+            // scope_level delta >= 0;
+            if level == self.scope_level {
+                let before_enter = self.delta.evolve_back(&tag);
+                self.before_send
+                    .insert(before_enter.clone(), ());
+                Some(before_enter)
+            } else if level < self.scope_level {
+                // cancel from parent scope;
+                self.parent.insert(tag.clone());
+                Some(tag.clone())
+            } else {
+                warn_worker!(
+                    "unexpected cancel of scope {:?} expect scope level {};",
+                    tag,
+                    self.scope_level
+                );
+                // ignore:
+                None
+            }
         }
-        Ok(())
     }
+}
 
-    #[inline]
-    fn is_skipped(&self, tag: &Tag) -> bool {
+impl ProducerAbortHandle {
+    fn is_canceled(&self, tag: &Tag) -> bool {
         let level = tag.len() as u32;
-        if level == self.scope_level {
-            (!self.current_skips.is_empty() && self.current_skips.contains_key(tag))
-                || (level >= 1
-                    && !self.parent_skips.is_empty()
-                    && self
-                        .parent_skips
-                        .contains_key(&tag.to_parent_uncheck()))
-        } else if level < self.scope_level {
-            *crate::config::ENABLE_CANCEL_CHILD
-                && !self.parent_skips.is_empty()
-                && self.parent_skips.contains_key(tag)
+        if level == self.before_send.scope_level {
+            if !self.before_send.is_empty() && self.before_send.contains_key(tag) {
+                return true;
+            }
+
+            if !tag.is_root() && !self.parent.is_empty() {
+                let p = tag.to_parent_uncheck();
+                self.check_parent(p)
+            } else {
+                false
+            }
+        } else if level < self.before_send.scope_level {
+            self.check_parent(tag.clone())
         } else {
             false
         }
     }
 
-    #[inline]
-    fn push_box_iter(
-        &mut self, bks: BlockScope, mut iter: Box<dyn Iterator<Item = D> + Send + 'static>,
-    ) -> IOResult<()> {
-        match self.try_push_iter_inner(bks.tag(), &mut iter) {
-            Ok(None) => Ok(()),
-            Ok(Some(item)) => {
-                self.block_entries
-                    .insert(bks.tag().clone(), BlockEntry::DynIter(Some(item), iter));
-                self.blocks.push_back(bks);
-                Err(IOError::would_block())
+    fn check_parent(&self, mut p: Tag) -> bool {
+        loop {
+            if self.parent.contains(&p) {
+                return true;
             }
-            Err(e) => {
-                if e.is_would_block() {
-                    self.block_entries
-                        .insert(bks.tag().clone(), BlockEntry::DynIter(None, iter));
-                    self.blocks.push_back(bks);
-                    Err(IOError::would_block())
-                } else {
-                    Err(e)
-                }
+            if p.is_root() {
+                break;
+            } else {
+                p = p.to_parent_uncheck();
             }
         }
+
+        false
+    }
+}
+
+#[derive(Clone)]
+pub struct OutputAbortNotify {
+    inner: Rc<RefCell<ProducerAbortHandle>>,
+}
+
+impl AbortNotify for OutputAbortNotify {
+    fn abort(&mut self, tag: &Tag, to: u32) -> Option<Tag> {
+        self.inner.borrow_mut().abort(tag, to)
+    }
+}
+
+impl OutputAbortNotify {
+    fn new(scope_level: u32, delta: MergedScopeDelta, ch: CancelHandle) -> Self {
+        let level_before = delta.origin_scope_level as u32;
+        let inner = ProducerAbortHandle {
+            scope_level,
+            inner: ch,
+            delta,
+            before_send: TidyTagMap::new(level_before),
+            parent: AHashSet::new(),
+        };
+        OutputAbortNotify { inner: Rc::new(RefCell::new(inner)) }
+    }
+
+    fn is_canceled(&self, tag: &Tag) -> bool {
+        self.inner.borrow().is_canceled(tag)
+    }
+}
+
+unsafe impl Send for OutputAbortNotify {}
+
+#[allow(dead_code)]
+pub(crate) struct Producer<D: Data> {
+    pub ch_info: ChannelInfo,
+    pub src: u32,
+    pub(crate) delta: MergedScopeDelta,
+    push: MicroBatchPush<D>,
+    cancel_handle: OutputAbortNotify,
+    re_seq: TidyTagMap<u64>,
+}
+
+impl<D: Data> Producer<D> {
+    pub(crate) fn new(
+        ch_info: ChannelInfo, delta: MergedScopeDelta, push: MicroBatchPush<D>, ch: CancelHandle,
+    ) -> Self {
+        let src = crate::worker_id::get_current_worker().index;
+        let cancel_handle = OutputAbortNotify::new(ch_info.scope_level, delta.clone(), ch);
+        let re_seq = TidyTagMap::new(ch_info.scope_level);
+        Producer { ch_info, src, delta, push, cancel_handle, re_seq }
+    }
+
+    pub(crate) fn get_abort_notify(&self) -> OutputAbortNotify {
+        self.cancel_handle.clone()
     }
 
     #[inline]
-    fn send_batch(&mut self, mut batch: MicroBatch<D>) -> IOResult<()> {
-        assert_eq!(batch.tag().len(), self.scope_level as usize);
-        if batch.is_empty() {
+    fn is_canceled(&self, tag: &Tag) -> bool {
+        self.cancel_handle.is_canceled(tag)
+    }
+}
+
+impl<D: Data> Push<MicroBatch<D>> for Producer<D> {
+    fn push(&mut self, mut batch: MicroBatch<D>) -> Result<(), IOError> {
+        if self.is_canceled(&batch.tag) {
             if batch.is_last() {
-                let seq = self.seq_emit.remove(&batch.tag).unwrap_or(0);
-                batch.set_seq(seq);
+                batch.clear();
             } else {
                 return Ok(());
             }
-        } else {
-            let seq = if batch.is_last() {
-                self.seq_emit.remove(&batch.tag).unwrap_or(0)
-            } else {
-                let seq = self.seq_emit.get_mut_or_insert(&batch.tag);
-                *seq += 1;
-                *seq - 1
-            };
-            batch.set_seq(seq);
         }
 
-        let tag = batch.tag().clone();
-        if !batch.is_empty() {
-            trace_worker!(
-                "output[{:?}] send {}th batch(len={}) of {:?} ;",
-                self.port,
-                batch.get_seq(),
-                batch.len(),
-                tag
-            );
-        }
-        match self.tee.push(batch) {
-            Err(e) => {
-                if e.is_would_block() {
-                    trace_worker!("output[{:?}] been blocked when sending batch of {:?};", self.port, tag);
-                    self.blocks.push_back(BlockScope::new(tag));
-                }
-                Err(e)
-            }
-            _ => Ok(()),
-        }
-    }
-
-    fn flush_buffer(&mut self, buffers: &mut ScopeBufferPool<D>) -> IOResult<()> {
-        for (tag, buf) in buffers.buffers() {
-            let batch = MicroBatch::new(tag, self.src, buf.into_read_only());
-            self.send_batch(batch)?;
-        }
-        self.tee.flush()
-    }
-
-    fn clean_lost_end_child(&mut self, tag: &Tag, buf_pool: &mut ScopeBufferPool<D>) -> IOResult<()> {
-        trace_worker!("clean buffer child of {:?}", tag);
-        for (tag, buf) in buf_pool.child_buffers_of(tag, true) {
-            if !buf.is_empty() {
-                // 正常情况不应进入这段逻辑，除非用户算子hold了end 信号， 通常这类情况需要用户定义on_notify算子；
-                warn_worker!("output[{:?}] the end signal of scope {:?} lost;", self.port, tag);
-                let batch = MicroBatch::new(tag, self.src, buf.into_read_only());
-                if let Err(err) = self.send_batch(batch) {
-                    return if err.is_would_block() { Err(IOError::cannot_block()) } else { Err(err) };
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn try_push_iter_inner<I: Iterator<Item = D>>(
-        &mut self, tag: &Tag, iter: &mut I,
-    ) -> IOResult<Option<D>> {
-        //self.buf_pool.pin(tag);
-        loop {
-            match self.buf_pool.push_iter(tag, iter) {
-                Ok(Some(buf)) => {
-                    let batch = MicroBatch::new(tag.clone(), self.src, buf);
-                    self.send_batch(batch)?;
-                }
-                Ok(None) => {
-                    // all data in iter should be send;
-                    assert!(iter.next().is_none());
-                    break;
-                }
-                Err(e) => {
-                    return if let Some(item) = e.0 { Ok(Some(item)) } else { Err(IOError::would_block()) }
-                }
-            }
-        }
-        Ok(None)
-    }
-}
-
-pub struct OutputSession<'a, D: Data> {
-    pub tag: Tag,
-    pub skip: bool,
-    output: RefMut<'a, OutputHandle<D>>,
-}
-
-impl<'a, D: Data> OutputSession<'a, D> {
-    pub(crate) fn new(tag: Tag, mut output: RefMut<'a, OutputHandle<D>>) -> Self {
-        if output.is_skipped(&tag) {
-            OutputSession { tag, skip: true, output }
-        } else {
-            //trace_worker!("output[{:?}] try to pin {:?} to create output session; ", output.port, tag);
-            output.buf_pool.pin(&tag);
-            OutputSession { tag, skip: false, output }
-        }
-    }
-
-    pub fn give(&mut self, msg: D) -> IOResult<()> {
-        if self.skip {
-            Ok(())
-        } else {
-            self.output.push(&self.tag, msg)
-        }
-    }
-
-    pub fn give_last(&mut self, msg: D, end: EndOfScope) -> IOResult<()> {
-        if self.skip {
-            self.output.notify_end(end)
-        } else {
-            assert_eq!(self.tag, end.tag);
-            self.output.push_last(msg, end)
-        }
-    }
-
-    pub fn give_iterator<I>(&mut self, iter: I) -> IOResult<()>
-    where
-        I: Iterator<Item = D> + Send + 'static,
-    {
-        if self.skip {
-            Ok(())
-        } else {
-            self.output.push_iter(&self.tag, iter)
-        }
-    }
-
-    pub fn notify_end(&mut self, end: EndOfScope) -> IOResult<()> {
-        assert_eq!(self.tag, end.tag);
-        self.output.notify_end(end)
-    }
-
-    pub fn flush(&mut self) -> IOResult<()> {
-        self.output.flush()
-    }
-}
-
-/// don't check skip as it would be checked in [`OutputSession`] ;
-impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
-    fn port(&self) -> Port {
-        self.port
-    }
-
-    fn push(&mut self, tag: &Tag, msg: D) -> IOResult<()> {
-        match self.buf_pool.push(tag, msg) {
-            Ok(Some(buf)) => {
-                let batch = MicroBatch::new(tag.clone(), self.src, buf);
-                self.send_batch(batch)
-            }
-            Err(e) => {
-                trace_worker!("output[{:?}] block on pushing data of {:?};", self.port, tag);
-                if let Some(item) = e.0 {
-                    self.block_entries
-                        .insert(tag.clone(), BlockEntry::Single(item));
-                }
-                self.blocks
-                    .push_back(BlockScope::new(tag.clone()));
-                Err(IOError::would_block())
-            }
-            Ok(_) => Ok(()),
-        }
-    }
-
-    fn push_last(&mut self, msg: D, end: EndOfScope) -> IOResult<()> {
-        match self.buf_pool.push_last(&end.tag, msg) {
-            Ok(Some(buf)) => {
-                let mut batch = MicroBatch::new(end.tag.clone(), self.src, buf);
-                batch.set_end(end);
-                self.send_batch(batch)
-            }
-            Ok(None) => Ok(()),
-            Err(e) => {
-                trace_worker!("output[{:?}]: block on pushing last data of {:?};", self.port, &end.tag);
-                if let Some(item) = e.0 {
-                    self.blocks
-                        .push_back(BlockScope::new(end.tag.clone()));
-                    self.block_entries
-                        .insert(end.tag.clone(), BlockEntry::LastSingle(item, end));
+        if batch.tag.len() == self.delta.origin_scope_level {
+            let tag = self.delta.evolve(&batch.tag);
+            if let Some(end) = batch.take_end() {
+                if self.delta.scope_level_delta() > 0 {
+                    // enter / to-child
+                    let end_cp = end.clone();
+                    batch.set_end(end);
+                    batch.set_tag(tag);
+                    trace_worker!("channel[{}] pushed end of scope{:?};", self.ch_info.id.index, batch.tag);
+                    self.push.push(batch)?;
+                    // end_cp.update_peers(DynPeers::all());
+                    let last = MicroBatch::last(self.src, end_cp);
+                    trace_worker!("channel[{}] pushed end of scope{:?};", self.ch_info.id.index, last.tag);
+                    self.push.push(last)
+                } else if self.delta.scope_level_delta() == 0 {
+                    batch.set_end(end);
+                    batch.set_tag(tag);
+                    trace_worker!("channel[{}] pushed end of scope{:?};", self.ch_info.id.index, batch.tag);
+                    self.push.push(batch)
                 } else {
-                    unreachable!("data may lost;")
+                    // leave / to parent
+                    if !batch.is_empty() {
+                        let seq = self.re_seq.get_mut_or_insert(&tag);
+                        batch.set_tag(tag);
+                        batch.set_seq(*seq);
+                        *seq += 1;
+                        self.push.push(batch)
+                    } else {
+                        Ok(())
+                    }
                 }
-                Err(IOError::would_block())
-            }
-        }
-    }
-
-    fn try_push_iter<I: Iterator<Item = D>>(&mut self, _tag: &Tag, _iter: &mut I) -> IOResult<()> {
-        //self.buf_pool.pin(tag);
-        unimplemented!("use push iter;");
-    }
-
-    fn notify_end(&mut self, end: EndOfScope) -> IOResult<()> {
-        let level = end.tag.len() as u32;
-        if level == self.scope_level {
-            let mut batch = if let Some(buf) = self.buf_pool.take_last_buf(&end.tag) {
-                MicroBatch::new(end.tag.clone(), self.src, buf.into_read_only())
+            } else if !batch.is_empty() {
+                // is not end, is not empty;
+                if self.delta.scope_level_delta() < 0 {
+                    let seq = self.re_seq.get_mut_or_insert(&tag);
+                    batch.set_seq(*seq);
+                    *seq += 1;
+                }
+                batch.set_tag(tag);
+                self.push.push(batch)
             } else {
-                MicroBatch::new(end.tag.clone(), self.src, ReadBuffer::new())
-            };
-            trace_worker!(
-                "output[{:?}] send end of scope{:?} peers: {:?}",
-                self.port,
-                batch.tag,
-                end.peers()
-            );
-            batch.set_end(end);
-            self.send_batch(batch)
-        } else if level < self.scope_level {
-            trace_worker!(
-                "output[{:?}] send end of scope{:?} peers: {:?}",
-                self.port,
-                end.tag,
-                end.peers()
-            );
-            let mut buf_pool = std::mem::replace(&mut self.buf_pool, Default::default());
-            let result = self.clean_lost_end_child(&end.tag, &mut buf_pool);
-            self.buf_pool = buf_pool;
-            if let Err(err) = result {
-                return Err(err);
+                //is not end, and is emtpy, ignore;
+                Ok(())
             }
-            let mut batch = MicroBatch::new(end.tag.clone(), self.src, ReadBuffer::new());
-            batch.set_end(end);
-            self.tee.push(batch)
+        } else if batch.tag.len() < self.delta.origin_scope_level {
+            // batch from parent scope;
+            assert!(batch.is_empty(), "batch from parent is not empty;");
+            assert!(batch.is_last(), "batch from parent is not last;");
+            if batch.tag.len() as u32 == self.ch_info.scope_level {
+                let seq = self.re_seq.remove(&batch.tag).unwrap_or(0);
+                batch.set_seq(seq);
+            }
+            trace_worker!("channel[{}] pushed end of scope{:?};", self.ch_info.id.index, batch.tag);
+            self.push.push(batch)
         } else {
-            warn_worker!("end signal from child scope {:?};", end.tag);
-            // ignore;
-            Ok(())
+            unreachable!("unrecognized batch from child scope {:?}", batch.tag);
         }
     }
 
-    fn flush(&mut self) -> IOResult<()> {
-        trace_worker!("output[{:?}] force flush all buffers;", self.port);
-        let mut buffers = std::mem::replace(&mut self.buf_pool, Default::default());
-        let result = self.flush_buffer(&mut buffers);
-        self.buf_pool = buffers;
-        result
+    fn flush(&mut self) -> Result<(), IOError> {
+        trace_worker!("output[{:?}] flush channel [{}]", self.ch_info.source_port, self.ch_info.index());
+        self.push.flush()
     }
 
-    fn close(&mut self) -> IOResult<()> {
-        self.flush()?;
-        self.is_closed = true;
-        trace_worker!("output[{:?}] closing ...;", self.port);
-        self.tee.close()
+    fn close(&mut self) -> Result<(), IOError> {
+        self.push.close()
     }
 }
+
+impl<D: Data> BlockPush for Producer<D> {
+    fn try_unblock(&mut self, tag: &Tag) -> Result<bool, IOError> {
+        self.push.try_unblock(tag)
+    }
+
+    fn clean_block_of(&mut self, tag: &Tag) -> IOResult<()> {
+        self.push.clean_block_of(tag)
+    }
+}
+
+// #[allow(dead_code)]
+// pub(crate) struct Tee<D: Data> {
+//     port: Port,
+//     scope_level: u32,
+//     main_push: Producer<D>,
+//     other_pushes: Vec<Producer<D>>,
+// }
+//
+// impl<D: Data> Tee<D> {
+//     pub fn new(port: Port, scope_level: u32, push: Producer<D>) -> Self {
+//         Tee { port, scope_level, main_push: push, other_pushes: Vec::new() }
+//     }
+//
+//     pub fn add_push(&mut self, push: Producer<D>) {
+//         self.other_pushes.push(push);
+//     }
+// }
+//
+// impl<D: Data> Push<MicroBatch<D>> for Tee<D> {
+//     fn push(&mut self, mut msg: MicroBatch<D>) -> Result<(), IOError> {
+//         let mut would_block = false;
+//         if !self.other_pushes.is_empty() {
+//             for tx in self.other_pushes.iter_mut() {
+//                 let msg_cp = msg.share();
+//                 if let Err(err) = tx.push(msg_cp) {
+//                     if err.is_would_block() {
+//                         trace_worker!(
+//                             "tee[{:?}] other push blocked on push batch of {:?} ;",
+//                             self.port,
+//                             msg.tag
+//                         );
+//                         would_block = true;
+//                     } else {
+//                         return Err(err);
+//                     }
+//                 }
+//             }
+//         }
+//         match self.main_push.push(msg) {
+//             Ok(_) => {
+//                 if would_block {
+//                     Err(IOError::would_block())
+//                 } else {
+//                     Ok(())
+//                 }
+//             }
+//             Err(err) => {
+//                 if err.is_would_block() {
+//                     trace_worker!("tee[{:?}] main push blocked on push batch;", self.port,);
+//                 }
+//                 Err(err)
+//             }
+//         }
+//     }
+//
+//     fn flush(&mut self) -> Result<(), IOError> {
+//         self.main_push.flush()?;
+//         for o in self.other_pushes.iter_mut() {
+//             o.flush()?;
+//         }
+//         Ok(())
+//     }
+//
+//     fn close(&mut self) -> Result<(), IOError> {
+//         self.main_push.close()?;
+//         for o in self.other_pushes.iter_mut() {
+//             o.close()?;
+//         }
+//         Ok(())
+//     }
+// }
+//
+// impl<D: Data> BlockPush for Tee<D> {
+//     fn try_unblock(&mut self, tag: &Tag) -> Result<bool, IOError> {
+//         let mut would_block = self.main_push.try_unblock(tag)?;
+//         for o in self.other_pushes.iter_mut() {
+//             would_block |= o.try_unblock(tag)?;
+//         }
+//         Ok(would_block)
+//     }
+//
+//     fn clean_block_of(&mut self, tag: &Tag) -> IOResult<()> {
+//         self.main_push.clean_block_of(tag)?;
+//         for o in self.other_pushes.iter_mut() {
+//             o.clean_block_of(tag)?;
+//         }
+//         Ok(())
+//     }
+// }

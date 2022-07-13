@@ -138,8 +138,8 @@ impl DataflowBuilder {
             let op_index = op_b.index();
             assert_eq!(i + 1, op_index, "{:?}", op_b.info);
             let inputs_notify = op_b.take_inputs_notify();
-            let outputs_cancel = op_b.build_outputs_cancel();
-            sch.add_schedule_op(op_index, op_b.info.scope_level, inputs_notify, outputs_cancel);
+            let outputs_notify = op_b.get_outputs_notify();
+            sch.add_schedule_op(op_index, op_b.info.scope_level, inputs_notify, outputs_notify);
             let op = op_b.build();
             op_names.push(op.info.name.clone());
             if report {

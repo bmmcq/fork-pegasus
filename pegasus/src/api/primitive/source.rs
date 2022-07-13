@@ -33,14 +33,12 @@ impl<D: Data> Source<D> {
         Source { output, dfb: dfb.clone() }
     }
 
-    pub fn input_from<I>(&mut self, source: I) -> Result<Stream<D>, BuildJobError>
+    pub fn input_from<I>(self, source: I) -> Result<Stream<D>, BuildJobError>
     where
         I: IntoIterator<Item = D>,
         I::IntoIter: Send + 'static,
     {
-        let output = self.output.copy_data();
-        let output = std::mem::replace(&mut self.output, output);
-        let stream = Stream::new(output, &self.dfb);
+        let stream = Stream::new(self.output, &self.dfb);
         source.into_dataflow(stream)
     }
 

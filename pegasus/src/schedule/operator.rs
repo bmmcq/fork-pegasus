@@ -1,23 +1,24 @@
 use std::collections::VecDeque;
 
+use crate::communication::cancel::AbortNotify;
+use crate::communication::output::OutputAbortNotify;
 use crate::communication::IOResult;
 use crate::event::{Event, EventKind};
 use crate::graph::Port;
-use crate::schedule::state::inbound::{InboundStreamState, InputEndNotify};
-use crate::schedule::state::outbound::OutputCancelState;
+use crate::schedule::state::inbound::{EndNotify, InboundStreamState};
 use crate::Tag;
 
 pub struct OperatorScheduler {
     pub index: usize,
     inputs_notify: Vec<Option<InboundStreamState>>,
-    outputs_cancel: Vec<Option<OutputCancelState>>,
+    outputs_cancel: Vec<Option<OutputAbortNotify>>,
     discards: VecDeque<(Port, Tag)>,
 }
 
 impl OperatorScheduler {
     pub fn new(
-        index: usize, scope_level: u32, inputs_notify: Vec<Option<Box<dyn InputEndNotify>>>,
-        outputs_cancel: Vec<Option<OutputCancelState>>,
+        index: usize, scope_level: u32, inputs_notify: Vec<Option<Box<dyn EndNotify>>>,
+        outputs_cancel: Vec<Option<OutputAbortNotify>>,
     ) -> Self {
         let mut input_events = Vec::with_capacity(inputs_notify.len());
         for (i, notify) in inputs_notify.into_iter().enumerate() {
@@ -56,7 +57,7 @@ impl OperatorScheduler {
                         src
                     );
 
-                    for t in handle.on_cancel(ch, src, &tag) {
+                    for t in handle.abort(&tag, src) {
                         trace_worker!(
                             "EARLY_STOP: output[{:?}] should stop sending data of {:?};",
                             port,

@@ -23,7 +23,7 @@ use crate::communication::decorator::broadcast::BroadcastBatchPush;
 use crate::communication::decorator::evented::EventEmitPush;
 use crate::communication::decorator::exchange::{ExchangeByBatchPush, ExchangeByDataPush};
 use crate::communication::decorator::{LocalMicroBatchPush, MicroBatchPush};
-use crate::communication::output::{OutputBuilderImpl, PerChannelPush};
+use crate::communication::output::{OutputBuilderImpl, Producer};
 use crate::data::MicroBatch;
 use crate::data_plane::{GeneralPull, GeneralPush};
 use crate::dataflow::DataflowBuilder;
@@ -100,15 +100,13 @@ impl<T: Data> Default for Channel<T> {
 }
 
 pub(crate) struct MaterializedChannel<T: Data> {
-    push: PerChannelPush<T>,
+    push: Producer<T>,
     pull: GeneralPull<MicroBatch<T>>,
     notify: Option<GeneralPush<MicroBatch<T>>>,
 }
 
 impl<T: Data> MaterializedChannel<T> {
-    pub fn take(
-        self,
-    ) -> (PerChannelPush<T>, GeneralPull<MicroBatch<T>>, Option<GeneralPush<MicroBatch<T>>>) {
+    pub fn take(self) -> (Producer<T>, GeneralPull<MicroBatch<T>>, Option<GeneralPush<MicroBatch<T>>>) {
         (self.push, self.pull, self.notify)
     }
 }
@@ -169,7 +167,7 @@ impl<T: Data> Channel<T> {
         let push = MicroBatchPush::Pipeline(LocalMicroBatchPush::new(ch_info, tx));
         let worker = crate::worker_id::get_current_worker().index;
         let ch = CancelHandle::SC(SingleConsCancel::new(worker));
-        let push = PerChannelPush::new(ch_info, self.scope_delta, push, ch);
+        let push = Producer::new(ch_info, self.scope_delta, push, ch);
         MaterializedChannel { push, pull: rx.into(), notify: None }
     }
 
@@ -227,26 +225,22 @@ impl<T: Data> Channel<T> {
                 }
                 let push = ExchangeByDataPush::new(info, r, buffers, pushes);
                 let ch = push.get_cancel_handle();
-                let push = PerChannelPush::new(info, self.scope_delta, MicroBatchPush::Exchange(push), ch);
+                let push = Producer::new(info, self.scope_delta, MicroBatchPush::Exchange(push), ch);
                 Ok(MaterializedChannel { push, pull: pull.into(), notify: Some(notify) })
             }
             ChannelKind::BatchShuffle(route) => {
                 let (info, pushes, pull, notify) = self.build_remote(scope_level, target, id, dfb)?;
                 let push = ExchangeByBatchPush::new(info, route, pushes);
                 let cancel = push.get_cancel_handle();
-                let push = PerChannelPush::new(
-                    info,
-                    self.scope_delta,
-                    MicroBatchPush::ExchangeByBatch(push),
-                    cancel,
-                );
+                let push =
+                    Producer::new(info, self.scope_delta, MicroBatchPush::ExchangeByBatch(push), cancel);
                 Ok(MaterializedChannel { push, pull: pull.into(), notify: Some(notify) })
             }
             ChannelKind::Broadcast => {
                 let (info, pushes, pull, notify) = self.build_remote(scope_level, target, id, dfb)?;
                 let push = BroadcastBatchPush::new(info, pushes);
                 let ch = push.get_cancel_handle();
-                let push = PerChannelPush::new(info, self.scope_delta, MicroBatchPush::Broadcast(push), ch);
+                let push = Producer::new(info, self.scope_delta, MicroBatchPush::Broadcast(push), ch);
                 Ok(MaterializedChannel { push, pull: pull.into(), notify: Some(notify) })
             }
             ChannelKind::Aggregate => {
@@ -256,7 +250,7 @@ impl<T: Data> Channel<T> {
                 let push = AggregateBatchPush::new(ch_info, pushes);
                 let cancel = push.get_cancel_handle();
                 let push =
-                    PerChannelPush::new(ch_info, self.scope_delta, MicroBatchPush::Aggregate(push), cancel);
+                    Producer::new(ch_info, self.scope_delta, MicroBatchPush::Aggregate(push), cancel);
                 Ok(MaterializedChannel { push, pull: pull.into(), notify: Some(notify) })
             }
         }

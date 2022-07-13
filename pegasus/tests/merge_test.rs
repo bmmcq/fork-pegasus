@@ -24,8 +24,8 @@ fn copy_merge_test() {
     let mut result = pegasus::run(conf, || {
         |input, output| {
             let src = input.input_from(0u32..1000)?;
-            let (s1, s2) = src.copied()?;
-            let (s3, s4) = s1.copied()?;
+            let (s1, s2) = src.tee()?;
+            let (s3, s4) = s1.tee()?;
             s2.merge(s4)?
                 .merge(s3)?
                 .count()?
@@ -45,7 +45,7 @@ fn copy_merge_test_02() {
     let mut result = pegasus::run(conf, || {
         |input, output| {
             let src = input.input_from(0..3)?;
-            let (s1, s2) = src.copied()?;
+            let (s1, s2) = src.tee()?;
             let s3 = s1.map(|l| Ok(l))?;
             let s4 = s2.map(|r| Ok(r))?;
             s3.merge(s4)?.sink_into(output)

@@ -21,7 +21,7 @@ use pegasus_common::codec::ShadeCodec;
 use crate::api::function::FnResult;
 use crate::api::meta::OperatorInfo;
 use crate::api::scope::ScopeDelta;
-use crate::api::{Map, Unary};
+use crate::api::{Branch, Map, Unary};
 use crate::communication::channel::{BatchRoute, ChannelKind};
 use crate::communication::output::OutputBuilderImpl;
 use crate::communication::Channel;
@@ -140,28 +140,16 @@ impl<D: Data> Stream<D> {
 }
 
 impl<D: Data> Stream<D> {
-    pub fn copied(self) -> Result<(Stream<D>, Stream<D>), BuildJobError> {
-        if self.ch.is_pipeline() {
-            let copy = Stream {
-                upstream: self.upstream.copy_data(),
-                ch: self.ch.clone(),
-                builder: self.builder.clone(),
-                partitions: self.partitions,
-            };
-            Ok((self, copy))
-        } else {
-            // stream.repartition(..).copied()
-            // stream.aggregate().copied()
-            // stream.broadcast().copied()
-            let shuffled = self.forward("shuffle_clone")?;
-            let copy = Stream {
-                upstream: shuffled.upstream.copy_data(),
-                ch: shuffled.ch.clone(),
-                builder: shuffled.builder.clone(),
-                partitions: shuffled.partitions,
-            };
-            Ok((shuffled, copy))
-        }
+    pub fn tee(self) -> Result<(Stream<D>, Stream<D>), BuildJobError> {
+        self.branch("tee", |_info| {
+            |input, output1, output2| {
+                input.for_each_batch(|batch| {
+                    output1.push_batch(batch.clone())?;
+                    output2.push_batch_mut(batch)?;
+                    Ok(())
+                })
+            }
+        })
     }
 
     pub(crate) fn sync_state(mut self) -> Stream<D> {

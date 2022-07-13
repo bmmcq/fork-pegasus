@@ -57,13 +57,13 @@ impl ScopeEndPanel {
     }
 }
 
-pub trait InputEndNotify: Send + 'static {
+pub trait EndNotify: Send + 'static {
     fn notify(&mut self, end: EndOfScope) -> IOResult<()>;
 
     fn close_notify(&mut self);
 }
 
-impl<T: Data> InputEndNotify for GeneralPush<MicroBatch<T>> {
+impl<T: Data> EndNotify for GeneralPush<MicroBatch<T>> {
     fn notify(&mut self, end: EndOfScope) -> IOResult<()> {
         let last = MicroBatch::last(0, end);
         if last.tag().is_root() {
@@ -84,11 +84,11 @@ pub struct InboundStreamState {
     port: Port,
     scope_level: u32,
     notify_guards: Vec<TidyTagMap<ScopeEndPanel>>,
-    notify: Box<dyn InputEndNotify>,
+    notify: Box<dyn EndNotify>,
 }
 
 impl InboundStreamState {
-    pub fn new(port: Port, scope_level: u32, notify: Box<dyn InputEndNotify>) -> Self {
+    pub fn new(port: Port, scope_level: u32, notify: Box<dyn EndNotify>) -> Self {
         let mut notify_guards = Vec::new();
         for i in 0..scope_level + 1 {
             notify_guards.push(TidyTagMap::new(i));

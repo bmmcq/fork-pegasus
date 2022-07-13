@@ -95,7 +95,7 @@ fn main() {
 
             points
                 .iterate_until(until, |start| {
-                    let (points1, points2) = start.copied()?;
+                    let (points1, points2) = start.tee()?;
                     let serving = points1.map(|(ps1, ps2)| {
                         let total_points = ps1.points + ps2.points;
                         if total_points % 4 < 2 {

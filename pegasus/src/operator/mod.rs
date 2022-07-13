@@ -23,15 +23,14 @@ use crate::api::meta::OperatorInfo;
 use crate::api::notification::{Cancel, End};
 use crate::channel_id::ChannelInfo;
 use crate::communication::input::{new_input, InputProxy};
-use crate::communication::output::{OutputBuilder, OutputBuilderImpl, OutputProxy};
+use crate::communication::output::{OutputAbortNotify, OutputBuilder, OutputBuilderImpl, OutputProxy};
 use crate::data::MicroBatch;
 use crate::data_plane::{GeneralPull, GeneralPush};
 use crate::errors::{IOResult, JobExecError};
 use crate::event::emitter::EventEmitter;
 use crate::graph::Port;
 use crate::progress::EndOfScope;
-use crate::schedule::state::inbound::InputEndNotify;
-use crate::schedule::state::outbound::OutputCancelState;
+use crate::schedule::state::inbound::EndNotify;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
@@ -408,7 +407,7 @@ impl Operator {
 pub struct OperatorBuilder {
     pub info: OperatorInfo,
     inputs: Vec<Box<dyn InputProxy>>,
-    inputs_notify: Vec<Option<Box<dyn InputEndNotify>>>,
+    inputs_notify: Vec<Option<Box<dyn EndNotify>>>,
     outputs: Vec<Box<dyn OutputBuilder>>,
     core: GeneralOperator,
 }
@@ -429,7 +428,7 @@ impl OperatorBuilder {
         assert_eq!(ch_info.target_port.port, self.inputs.len());
         let input = new_input(ch_info, pull, event_emitter);
         self.inputs.push(input);
-        let n = notify.map(|p| Box::new(p) as Box<dyn InputEndNotify>);
+        let n = notify.map(|p| Box::new(p) as Box<dyn EndNotify>);
         self.inputs_notify.push(n);
     }
 
@@ -446,14 +445,14 @@ impl OperatorBuilder {
         output
     }
 
-    pub(crate) fn take_inputs_notify(&mut self) -> Vec<Option<Box<dyn InputEndNotify>>> {
+    pub(crate) fn take_inputs_notify(&mut self) -> Vec<Option<Box<dyn EndNotify>>> {
         std::mem::replace(&mut self.inputs_notify, vec![])
     }
 
-    pub(crate) fn build_outputs_cancel(&self) -> Vec<Option<OutputCancelState>> {
+    pub(crate) fn get_outputs_notify(&self) -> Vec<Option<OutputAbortNotify>> {
         let mut vec = Vec::with_capacity(self.outputs.len());
         for o in self.outputs.iter() {
-            let handle = o.build_cancel_handle();
+            let handle = o.get_abort_notify();
             vec.push(handle);
         }
         vec
