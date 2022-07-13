@@ -256,7 +256,7 @@ impl<D: Data> ExchangeByDataPush<D> {
                     .get_mut_or_insert(&batch.tag)
                     .push_back(BlockEntry::Batch(batch));
             }
-            would_block!("no buffer available in exchange;")
+            Err(IOError::would_block())
         } else {
             if let Some(end) = batch.take_end() {
                 assert!(end.peers_contains(self.src), "push illegal data without allow;");
@@ -284,7 +284,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                     self.index
                 );
                 b.push_back(BlockEntry::Batch(batch));
-                return would_block!("no buffer available in exchange;");
+                return Err(IOError::would_block());
             }
         }
 
@@ -466,7 +466,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                                 batch.tag,
                             );
                         }
-                        would_block!("no buffer available in exchange;")?;
+                        return Err(IOError::would_block());
                     }
                 }
             }

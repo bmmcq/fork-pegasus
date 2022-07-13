@@ -141,7 +141,7 @@ pub use manager::ServerDetect;
 pub use manager::SimpleServerDetector;
 #[cfg(feature = "benchmark")]
 pub use message::{MessageHeader, MESSAGE_HEAD_SIZE};
-pub use receive::IPCReceiver;
+pub use receive::{IPCReceiver, IPCRecvError};
 #[cfg(feature = "benchmark")]
 pub use receive::{MessageDecoder, ReentrantDecoder, ReentrantSlabDecoder, SimpleBlockDecoder};
 pub use send::{check_has_network_error, IPCSender};

@@ -26,7 +26,7 @@ where
 
 pub struct JobClient {
     cached_conns: HashMap<u64, Connection>,
-    server_size : usize,
+    server_size: usize,
     submit_cnt: usize,
     is_closed: bool,
 }

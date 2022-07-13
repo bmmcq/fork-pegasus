@@ -1,5 +1,5 @@
 use crate::dataflow::Dataflow;
-use crate::errors::{ErrorKind, JobExecError};
+use crate::errors::JobExecError;
 use crate::schedule::StepStrategy;
 
 #[derive(Default)]
@@ -29,17 +29,13 @@ impl WaterfallStrategy {
         loop {
             match task.try_fire(index) {
                 Ok(fired) => return Ok(fired),
-                Err(e) => match &e.kind {
-                    ErrorKind::WouldBlock(tag) => {
-                        if let Some(tag) = tag {
-                            debug_worker!("scope {:?} blocked in operator {}", tag, index);
-                        } else {
-                            break;
-                        }
+                Err(e) => {
+                    if e.is_would_block() {
+                        break;
+                    } else {
+                        return Err(e);
                     }
-                    ErrorKind::Interrupted => break,
-                    _ => return Err(e),
-                },
+                }
             }
         }
         Ok(true)

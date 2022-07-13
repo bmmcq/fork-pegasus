@@ -78,7 +78,7 @@ impl<I: Data> Map<I> for Stream<I> {
                         for item in dataset.drain() {
                             let iter = func(item)?;
                             if let Err(err) = session.give_iterator(iter) {
-                                if err.is_would_block() || err.is_interrupted() {
+                                if err.is_would_block() {
                                     trace_worker!("flat_map_{} is blocked on {:?};", index, session.tag,);
                                 }
                                 return Err(err)?;

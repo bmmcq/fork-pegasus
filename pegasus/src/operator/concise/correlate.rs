@@ -26,7 +26,7 @@ use crate::api::CorrelatedSubTask;
 use crate::communication::input::{new_input_session, InputProxy};
 use crate::communication::output::{new_output, OutputProxy};
 use crate::data::MicroBatch;
-use crate::errors::{IOError, JobExecError};
+use crate::errors::{ErrorKind, JobExecError};
 use crate::operator::{Notifiable, OperatorCore};
 use crate::progress::{DynPeers, EndOfScope};
 use crate::stream::{Single, SingleItem, Stream};
@@ -177,7 +177,7 @@ impl<D: Data> OperatorCore for ForkSubtaskOperator<D> {
                         "suspend fork new scope as capacity blocked, already forked {} scopes;",
                         fp.forked_child
                     );
-                    would_block!("fork max scope bound")?
+                    return Err(JobExecError::new(ErrorKind::WouldBlock, None));
                 }
             } else {
                 if let Some(end) = batch.take_end() {

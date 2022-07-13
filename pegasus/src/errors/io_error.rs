@@ -13,140 +13,100 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::any::Any;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::io;
 
+use pegasus_common::channel::RecvError;
+
 use crate::channel_id::ChannelId;
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum ChannelErrorKind {
-    // the consumer is dropped, while
-    Disconnected,
-    ConnectionAborted,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub struct ChannelError {
-    pub ch_id: ChannelId,
-    pub kind: ChannelErrorKind,
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IOErrorKind {
-    SourceExhaust,
+    Eof,
+    UnexpectedEof,
+    SendAfterClose,
+    SendToDisconnect,
+    EncodeError(&'static str),
+    DecodeError(&'static str),
     // IO error from system's IO derive, like network(tcp..), files,
-    System(io::ErrorKind),
-    Channel(ChannelError),
+    SystemIO(io::ErrorKind),
     // block by flow control;
     WouldBlock,
+    // try to block but can't;
     CannotBlock,
-    Interrupt,
     Unknown,
+}
+
+impl IOErrorKind {
+    pub fn is_fatal(&self) -> bool {
+        !matches!(self, IOErrorKind::Eof | IOErrorKind::WouldBlock)
+    }
 }
 
 impl From<io::ErrorKind> for IOErrorKind {
     fn from(kind: io::ErrorKind) -> Self {
-        IOErrorKind::System(kind)
+        IOErrorKind::SystemIO(kind)
     }
 }
 
-enum ErrorCause {
-    Common(io::Error),
-    Other(Box<dyn Error + Send>),
-}
-
+#[derive(Debug)]
 pub struct IOError {
     ch_id: Option<ChannelId>,
     kind: IOErrorKind,
-    cause: Option<ErrorCause>,
+    cause: Option<Box<dyn Error + Send + 'static>>,
     origin: Option<String>,
-    resource: Option<Box<dyn Any + Send>>,
+}
+
+impl From<IOErrorKind> for IOError {
+    fn from(e: IOErrorKind) -> Self {
+        IOError::new(e)
+    }
 }
 
 impl IOError {
     pub fn new<K: Into<IOErrorKind>>(kind: K) -> Self {
-        IOError { ch_id: None, kind: kind.into(), cause: None, origin: None, resource: None }
+        IOError { ch_id: None, kind: kind.into(), cause: None, origin: None }
     }
 
-    pub fn source_exhaust() -> Self {
-        IOError::new(IOErrorKind::SourceExhaust)
+    pub fn eof() -> Self {
+        IOError::new(IOErrorKind::Eof)
     }
 
     pub fn would_block() -> Self {
         IOError::new(IOErrorKind::WouldBlock)
     }
 
-    pub fn would_block_with<A: Send + 'static>(res: A) -> Self {
-        let resource = Some(Box::new(res) as Box<dyn Any + Send>);
-        IOError { ch_id: None, kind: IOErrorKind::WouldBlock, cause: None, origin: None, resource }
-    }
-
     pub fn cannot_block() -> Self {
         IOError::new(IOErrorKind::CannotBlock)
-    }
-
-    pub fn interrupted() -> Self {
-        IOError::new(IOErrorKind::Interrupt)
     }
 
     pub fn set_ch_id(&mut self, ch_id: ChannelId) {
         self.ch_id = Some(ch_id)
     }
 
-    pub fn set_io_cause(&mut self, err: io::Error) {
-        self.cause = Some(ErrorCause::Common(err))
-    }
-
-    pub fn set_cause(&mut self, err: Box<dyn Error + Send>) {
-        self.cause = Some(ErrorCause::Other(err));
+    pub fn set_cause(&mut self, err: Box<dyn Error + Send + 'static>) {
+        self.cause = Some(err);
     }
 
     pub fn set_origin(&mut self, origin: String) {
         self.origin = Some(origin);
     }
 
-    pub fn is_broken_pipe(&self) -> bool {
-        match self.kind {
-            IOErrorKind::System(io_kind) if io_kind == io::ErrorKind::BrokenPipe => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_connection_aborted(&self) -> bool {
-        match self.kind {
-            IOErrorKind::System(io_kind) if io_kind == io::ErrorKind::ConnectionAborted => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_interrupted(&self) -> bool {
-        match self.kind {
-            IOErrorKind::System(io_kind) if io_kind == io::ErrorKind::Interrupted => true,
-            IOErrorKind::Interrupt => true,
-            _ => false,
-        }
+    pub fn is_eof(&self) -> bool {
+        matches!(self.kind, IOErrorKind::Eof)
     }
 
     pub fn is_would_block(&self) -> bool {
-        match self.kind {
-            IOErrorKind::System(io_kind) if io_kind == io::ErrorKind::WouldBlock => true,
-            IOErrorKind::WouldBlock => true,
-            _ => false,
-        }
+        matches!(self.kind, IOErrorKind::WouldBlock)
     }
 
-    pub fn is_source_exhaust(&self) -> bool {
-        self.kind == IOErrorKind::SourceExhaust
+    pub fn is_fatal(&self) -> bool {
+        self.kind.is_fatal()
     }
 
     pub fn kind(&self) -> &IOErrorKind {
         &self.kind
-    }
-
-    pub fn take_resource(&mut self) -> Option<Box<dyn Any + Send>> {
-        self.resource.take()
     }
 }
 
@@ -158,44 +118,46 @@ impl Default for IOError {
 
 impl From<io::Error> for IOError {
     fn from(e: io::Error) -> Self {
-        let mut error = IOError::new(IOErrorKind::System(e.kind()));
-        error.set_io_cause(e);
+        let mut error = IOError::new(IOErrorKind::SystemIO(e.kind()));
+        error.set_cause(Box::new(e));
         error
     }
 }
 
-impl From<Box<dyn std::error::Error + Send>> for IOError {
-    fn from(e: Box<dyn Error + Send>) -> Self {
+impl From<RecvError> for IOError {
+    fn from(e: RecvError) -> Self {
+        match e {
+            RecvError::Eof => IOError::eof(),
+            RecvError::UnexpectedEof => IOError::new(IOErrorKind::UnexpectedEof),
+        }
+    }
+}
+
+impl From<Box<dyn Error + Send + 'static>> for IOError {
+    fn from(e: Box<dyn Error + Send + 'static>) -> Self {
         let mut err = IOError::new(IOErrorKind::Unknown);
         err.set_cause(e);
         err
     }
 }
 
-impl Debug for IOError {
+impl Display for IOError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "IOError(kind={:?}),", self.kind)?;
+        write!(f, "IOError(kind={:?})", self.kind)?;
+
+        if let Some(ch_id) = self.ch_id {
+            write!(f, " from channel[{}]", ch_id.index)?;
+        }
+
         if let Some(ref origin) = self.origin {
-            write!(f, "\toccurred at: {},", origin)?;
+            write!(f, ", occurred at: {}", origin)?;
         }
 
         if let Some(ref cause) = self.cause {
-            match cause {
-                ErrorCause::Common(e) => {
-                    write!(f, "\tcaused by {}", e)?;
-                }
-                ErrorCause::Other(e) => {
-                    write!(f, "\tcaused by {}", e)?;
-                }
-            }
+            write!(f, ", caused by {}", cause)?;
         }
-        write!(f, " ;")
-    }
-}
 
-impl Display for IOError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        Debug::fmt(self, f)
+        write!(f, " ;")
     }
 }
 

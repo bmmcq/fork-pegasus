@@ -13,12 +13,13 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use pegasus_network::{IPCReceiver, IPCSender};
+use pegasus_common::channel::RecvError;
+use pegasus_network::{IPCReceiver, IPCRecvError, IPCSender};
 
 use crate::channel_id::ChannelId;
 use crate::data_plane::intra_process::IntraProcessPull;
 use crate::data_plane::{Pull, Push};
-use crate::errors::IOError;
+use crate::errors::{IOError, IOErrorKind};
 use crate::Data;
 
 pub struct RemotePush<T: Data> {
@@ -29,10 +30,6 @@ pub struct RemotePush<T: Data> {
 impl<T: Data> Push<T> for RemotePush<T> {
     fn push(&mut self, msg: T) -> Result<(), IOError> {
         Ok(self.push.send(&msg)?)
-    }
-
-    fn check_failed(&mut self) -> Option<T> {
-        None
     }
 
     fn flush(&mut self) -> Result<(), IOError> {
@@ -60,7 +57,7 @@ pub struct CombinationPull<T: Data> {
 }
 
 impl<T: Data> Pull<T> for CombinationPull<T> {
-    fn next(&mut self) -> Result<Option<T>, IOError> {
+    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
         if let Some(data) = self.cached.take() {
             return Ok(Some(data));
         }
@@ -68,33 +65,40 @@ impl<T: Data> Pull<T> for CombinationPull<T> {
         if !self.remote_end {
             match self.remote.recv() {
                 Ok(Some(data)) => return Ok(Some(data)),
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
+                Err(e) => match e {
+                    IPCRecvError::RecvErr(RecvError::Eof) => {
                         self.remote_end = true;
-                    } else {
-                        return Err(e)?;
                     }
-                }
-                _ => (),
+                    IPCRecvError::RecvErr(RecvError::UnexpectedEof) => {
+                        return Err(IOErrorKind::UnexpectedEof)?;
+                    }
+                    IPCRecvError::DecodeErr(e) => {
+                        let type_name = std::any::type_name::<T>();
+                        let mut error = IOError::new(IOErrorKind::DecodeError(type_name));
+                        error.set_cause(Box::new(e));
+                        return Err(error);
+                    }
+                },
+                Ok(None) => (),
             }
         }
 
         if !self.local_end {
-            match self.local.next() {
+            match self.local.pull_next() {
                 Ok(Some(data)) => return Ok(Some(data)),
                 Err(err) => {
-                    if err.is_source_exhaust() {
+                    if err.is_eof() {
                         self.local_end = true;
                     } else {
                         return Err(err);
                     }
                 }
-                _ => (),
+                Ok(None) => (),
             }
         }
 
         if self.local_end && self.remote_end {
-            Err(IOError::source_exhaust())
+            Err(IOError::eof())
         } else {
             Ok(None)
         }
@@ -108,13 +112,21 @@ impl<T: Data> Pull<T> for CombinationPull<T> {
         } else if !self.remote_end {
             match self.remote.recv() {
                 Ok(d) => self.cached = d,
-                Err(e) => {
-                    if e.kind() == std::io::ErrorKind::BrokenPipe {
+                Err(e) => match e {
+                    IPCRecvError::RecvErr(RecvError::Eof) => {
                         self.remote_end = true;
-                    } else {
-                        return Err(e)?;
                     }
-                }
+                    IPCRecvError::RecvErr(RecvError::UnexpectedEof) => {
+                        return Err(IOErrorKind::UnexpectedEof)?;
+                    }
+                    IPCRecvError::DecodeErr(e) => {
+                        let type_name = std::any::type_name::<T>();
+                        let mut error = IOError::new(IOErrorKind::DecodeError(type_name));
+                        error.set_cause(Box::new(e));
+                        error.set_ch_id(self.id);
+                        return Err(error);
+                    }
+                },
             }
             Ok(self.cached.is_some())
         } else {

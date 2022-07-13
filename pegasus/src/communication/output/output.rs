@@ -95,7 +95,7 @@ impl<D: Data> OutputHandle<D> {
                     .insert(tag.clone(), BlockEntry::DynIter(Some(item), Box::new(iter)));
                 self.blocks
                     .push_back(BlockScope::new(tag.clone()));
-                would_block!("push iterator")
+                Err(IOError::would_block())
             }
             Err(e) => {
                 if e.is_would_block() {
@@ -104,7 +104,7 @@ impl<D: Data> OutputHandle<D> {
                         .insert(tag.clone(), BlockEntry::DynIter(None, Box::new(iter)));
                     self.blocks
                         .push_back(BlockScope::new(tag.clone()));
-                    would_block!("push iterator")
+                    Err(IOError::would_block())
                 } else {
                     Err(e)
                 }
@@ -306,14 +306,14 @@ impl<D: Data> OutputHandle<D> {
                 self.block_entries
                     .insert(bks.tag().clone(), BlockEntry::DynIter(Some(item), iter));
                 self.blocks.push_back(bks);
-                would_block!("unblock push iter")
+                Err(IOError::would_block())
             }
             Err(e) => {
                 if e.is_would_block() {
                     self.block_entries
                         .insert(bks.tag().clone(), BlockEntry::DynIter(None, iter));
                     self.blocks.push_back(bks);
-                    would_block!("unblock push iter")
+                    Err(IOError::would_block())
                 } else {
                     Err(e)
                 }
@@ -402,7 +402,9 @@ impl<D: Data> OutputHandle<D> {
                     assert!(iter.next().is_none());
                     break;
                 }
-                Err(e) => return if let Some(item) = e.0 { Ok(Some(item)) } else { would_block!("") },
+                Err(e) => {
+                    return if let Some(item) = e.0 { Ok(Some(item)) } else { Err(IOError::would_block()) }
+                }
             }
         }
         Ok(None)
@@ -484,7 +486,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
                 }
                 self.blocks
                     .push_back(BlockScope::new(tag.clone()));
-                would_block!("no buffer available")
+                Err(IOError::would_block())
             }
             Ok(_) => Ok(()),
         }
@@ -508,7 +510,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
                 } else {
                     unreachable!("data may lost;")
                 }
-                would_block!("no buffer available")
+                Err(IOError::would_block())
             }
         }
     }

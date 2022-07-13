@@ -73,9 +73,7 @@ pub(crate) fn count_available_server() -> usize {
                 0
             }
         }
-        Err(_) => {
-            0
-        }
+        Err(_) => 0,
     }
 }
 

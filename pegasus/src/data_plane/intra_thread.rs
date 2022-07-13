@@ -15,9 +15,6 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::io;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
 
 use pegasus_common::rc::UnsafeRcPtr;
 
@@ -27,117 +24,89 @@ use crate::errors::{IOError, IOErrorKind};
 
 pub struct ThreadPush<T> {
     pub id: ChannelId,
-    ptr: UnsafeRcPtr<RefCell<VecDeque<T>>>,
-    exhaust: Arc<AtomicBool>,
-    exhaust_local: bool,
-    failed: Option<T>,
+    queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
+    is_closed: UnsafeRcPtr<RefCell<bool>>,
 }
 
 impl<T> ThreadPush<T> {
-    fn new(id: ChannelId, ptr: UnsafeRcPtr<RefCell<VecDeque<T>>>, exhaust: &Arc<AtomicBool>) -> Self {
-        ThreadPush { id, ptr, exhaust: exhaust.clone(), exhaust_local: false, failed: None }
+    fn new(
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, is_closed: UnsafeRcPtr<RefCell<bool>>,
+    ) -> Self {
+        ThreadPush { id, queue, is_closed }
     }
 }
 
-impl<T> Clone for ThreadPush<T> {
-    fn clone(&self) -> Self {
-        ThreadPush {
-            id: self.id,
-            ptr: self.ptr.clone(),
-            exhaust: self.exhaust.clone(),
-            exhaust_local: false,
-            failed: None,
-        }
-    }
-}
+// impl<T> Clone for ThreadPush<T> {
+//     fn clone(&self) -> Self {
+//         ThreadPush {
+//             id: self.id,
+//             queue: self.queue.clone(),
+//             is_closed: self.is_closed.clone(),
+//         }
+//     }
+// }
 
 impl<T: Send> Push<T> for ThreadPush<T> {
     #[inline]
     fn push(&mut self, msg: T) -> Result<(), IOError> {
-        if !self.exhaust_local {
-            self.ptr.borrow_mut().push_back(msg);
+        if !*self.is_closed.borrow() {
+            self.queue.borrow_mut().push_back(msg);
             Ok(())
         } else {
             error_worker!("ThreadPush#push after close;");
-            self.failed = Some(msg);
-            let err = throw_io_error!(io::ErrorKind::NotConnected, self.id);
-            Err(err)
+            let mut error = IOError::new(IOErrorKind::SendAfterClose);
+            error.set_ch_id(self.id);
+            Err(error)
         }
-    }
-
-    fn check_failed(&mut self) -> Option<T> {
-        self.failed.take()
     }
 
     #[inline]
     fn close(&mut self) -> Result<(), IOError> {
-        self.exhaust_local = true;
-        if Arc::strong_count(&self.exhaust) == 2 {
-            self.exhaust.store(true, Ordering::SeqCst);
-        }
+        *self.is_closed.borrow_mut() = true;
         Ok(())
-    }
-}
-
-impl<T> Drop for ThreadPush<T> {
-    fn drop(&mut self) {
-        if Arc::strong_count(&self.exhaust) == 2 && !self.exhaust.load(Ordering::SeqCst) {
-            warn_worker!("{:?}: drop 'ThreadPush' without close;", self.id);
-            // if cfg!(debug_assertions) {
-            //     let bt = backtrace::Backtrace::new();
-            //     error_worker!("caused by:\n{:?}", bt);
-            // }
-        }
     }
 }
 
 pub struct ThreadPull<T> {
     pub id: ChannelId,
-    ptr: UnsafeRcPtr<RefCell<VecDeque<T>>>,
-    exhaust: Arc<AtomicBool>,
-    exhaust_local: bool,
+    queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
+    is_closed: UnsafeRcPtr<RefCell<bool>>,
 }
 
 impl<T> ThreadPull<T> {
-    fn new(id: ChannelId, ptr: UnsafeRcPtr<RefCell<VecDeque<T>>>, exhaust: Arc<AtomicBool>) -> Self {
-        ThreadPull { id, ptr, exhaust, exhaust_local: false }
+    fn new(
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, is_closed: UnsafeRcPtr<RefCell<bool>>,
+    ) -> Self {
+        ThreadPull { id, queue, is_closed }
     }
 }
 
 impl<T: Send> Pull<T> for ThreadPull<T> {
-    fn next(&mut self) -> Result<Option<T>, IOError> {
-        if self.exhaust_local {
-            //debug_worker!("channel {:?} was exhausted;", self.id);
-            let err = throw_io_error!(IOErrorKind::SourceExhaust, self.id);
-            Err(err)
-        } else {
-            match self.ptr.borrow_mut().pop_front() {
-                Some(t) => Ok(Some(t)),
-                None => {
-                    if self.exhaust.load(Ordering::SeqCst) {
-                        self.exhaust_local = true;
-                        Ok(None)
-                    } else if Arc::strong_count(&self.exhaust) == 1 {
-                        error_worker!("ThreadPull#pull: fail to pull data as the push disconnected;");
-                        let err = throw_io_error!(io::ErrorKind::BrokenPipe, self.id);
-                        Err(err)
-                    } else {
-                        Ok(None)
-                    }
+    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
+        match self.queue.borrow_mut().pop_front() {
+            Some(t) => Ok(Some(t)),
+            None => {
+                if *self.is_closed.borrow() {
+                    // is closed;
+                    Err(IOError::eof())
+                } else if self.queue.strong_count() == 1 {
+                    Err(IOErrorKind::UnexpectedEof)?
+                } else {
+                    Ok(None)
                 }
             }
         }
     }
 
     fn has_next(&mut self) -> Result<bool, IOError> {
-        Ok(!self.ptr.borrow().is_empty())
+        Ok(!self.queue.borrow().is_empty())
     }
 }
 
 pub fn pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPull<T>) {
     let queue = UnsafeRcPtr::new(RefCell::new(VecDeque::new()));
-    let exhaust = Arc::new(AtomicBool::new(false));
-    (ThreadPush::new(id, queue.clone(), &exhaust), ThreadPull::new(id, queue, exhaust))
+    let is_closed = UnsafeRcPtr::new(RefCell::new(false));
+    (ThreadPush::new(id, queue.clone(), is_closed.clone()), ThreadPull::new(id, queue, is_closed))
 }
 
 #[cfg(test)]
@@ -152,17 +121,16 @@ mod test {
         }
 
         let mut j = 0;
-        while let Some(i) = rx.next().unwrap() {
+        while let Some(i) = rx.pull_next().unwrap() {
             assert_eq!(i, j);
             j += 1;
         }
         assert_eq!(j, 65535);
         tx.close().unwrap();
-        assert_eq!(rx.next().unwrap(), None);
-        let result = rx.next();
+        let result = rx.pull_next();
         match result {
             Err(err) => {
-                assert!(err.is_source_exhaust(), "unexpected error {:?}", err);
+                assert!(err.is_eof(), "unexpected error {:?}", err);
             }
             Ok(_) => {
                 panic!("undetected error");

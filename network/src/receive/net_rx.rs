@@ -23,7 +23,7 @@ use std::time::Instant;
 
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::sync::ShardedLock;
-use pegasus_common::channel::{MPMCSender, MessageSender};
+use pegasus_common::channel::MessageSender;
 
 use crate::message::{Message, Payload};
 use crate::receive::MessageDecoder;

@@ -234,7 +234,7 @@ impl<D: Data> InputHandle<D> {
             return Ok(None);
         }
         loop {
-            let result: IOResult<Option<MicroBatch<D>>> = self.pull.next();
+            let result: IOResult<Option<MicroBatch<D>>> = self.pull.pull_next();
             match result {
                 Ok(Some(mut batch)) => {
                     if batch.tag.len() < self.ch_info.scope_level as usize {
@@ -300,7 +300,7 @@ impl<D: Data> InputHandle<D> {
                 }
                 Ok(None) => return Ok(None),
                 Err(err) => {
-                    return if err.is_source_exhaust() {
+                    return if err.is_eof() {
                         debug_worker!("channel[{}] closed;", self.ch_info.index());
                         assert!(self.data_exhaust);
                         Ok(None)

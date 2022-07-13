@@ -302,7 +302,7 @@ impl<D: Data> Push<MicroBatch<D>> for Tee<D> {
         match self.main_push.push(msg) {
             Ok(_) => {
                 if would_block {
-                    would_block!("underlying channel push blocked")
+                    Err(IOError::would_block())
                 } else {
                     Ok(())
                 }

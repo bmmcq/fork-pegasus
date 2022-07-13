@@ -130,4 +130,8 @@ impl<T: Sized> UnsafeRcPtr<T> {
     pub fn try_unwrap(this: Self) -> Result<T, Self> {
         Rc::try_unwrap(this.ptr).map_err(|ptr| UnsafeRcPtr { ptr })
     }
+
+    pub fn strong_count(&self) -> usize {
+        Rc::strong_count(&self.ptr)
+    }
 }

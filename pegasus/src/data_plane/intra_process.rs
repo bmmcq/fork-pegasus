@@ -13,8 +13,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::io;
-
 use pegasus_common::channel::*;
 
 use crate::channel_id::ChannelId;
@@ -26,12 +24,11 @@ use crate::errors::{IOError, IOErrorKind};
 pub struct IntraProcessPush<T: Send> {
     pub ch_id: ChannelId,
     sender: MessageSender<T>,
-    last_failed: Option<T>,
 }
 
 impl<T: Send> IntraProcessPush<T> {
     pub fn new(ch_id: ChannelId, sender: MessageSender<T>) -> Self {
-        IntraProcessPush { ch_id, sender, last_failed: None }
+        IntraProcessPush { ch_id, sender }
     }
 }
 
@@ -39,14 +36,8 @@ impl<T: Data> Push<T> for IntraProcessPush<T> {
     fn push(&mut self, msg: T) -> Result<(), IOError> {
         self.sender.send(msg).map_err(|err| {
             error_worker!("IntraProcessPush#push: send data failure {:?}", err);
-            self.last_failed.replace(err);
-            throw_io_error!(io::ErrorKind::NotConnected, self.ch_id)
+            IOError::new(IOErrorKind::SendToDisconnect)
         })
-    }
-
-    #[inline]
-    fn check_failed(&mut self) -> Option<T> {
-        self.last_failed.take()
     }
 
     #[inline]
@@ -70,16 +61,16 @@ impl<T: Send> IntraProcessPull<T> {
 }
 
 impl<T: Data> Pull<T> for IntraProcessPull<T> {
-    fn next(&mut self) -> Result<Option<T>, IOError> {
+    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
         if let Some(data) = self.cached.take() {
             return Ok(Some(data));
         }
 
         if !self.local.1 {
-            match self.local.0.next() {
+            match self.local.0.pull_next() {
                 Ok(Some(data)) => return Ok(Some(data)),
                 Err(err) => {
-                    if err.is_source_exhaust() {
+                    if err.is_eof() {
                         self.local.1 = true;
                     } else {
                         return Err(err);
@@ -93,12 +84,10 @@ impl<T: Data> Pull<T> for IntraProcessPull<T> {
             match self.recv.0.try_recv() {
                 Ok(Some(data)) => return Ok(Some(data)),
                 Err(e) => {
-                    if e.kind() == io::ErrorKind::BrokenPipe {
+                    if e.is_eof() {
                         self.recv.1 = true;
                     } else {
-                        let mut err = throw_io_error!(e.kind(), self.ch_id);
-                        err.set_io_cause(e);
-                        return Err(err);
+                        Err(e)?;
                     }
                 }
                 _ => (),
@@ -106,7 +95,9 @@ impl<T: Data> Pull<T> for IntraProcessPull<T> {
         }
 
         if self.recv.1 && self.local.1 {
-            Err(throw_io_error!(IOErrorKind::SourceExhaust, self.ch_id))
+            let mut eof = IOError::eof();
+            eof.set_ch_id(self.ch_id);
+            Err(eof)
         } else {
             Ok(None)
         }
@@ -124,12 +115,10 @@ impl<T: Data> Pull<T> for IntraProcessPull<T> {
                 match self.recv.0.try_recv() {
                     Ok(d) => self.cached = d,
                     Err(e) => {
-                        if e.kind() == io::ErrorKind::BrokenPipe {
+                        if e.is_eof() {
                             self.recv.1 = true;
                         } else {
-                            let mut err = throw_io_error!(e.kind(), self.ch_id);
-                            err.set_io_cause(e);
-                            return Err(err);
+                            return Err(e)?;
                         }
                     }
                 }

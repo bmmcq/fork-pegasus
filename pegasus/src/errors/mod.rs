@@ -23,130 +23,99 @@ mod io_error;
 pub use io_error::IOError;
 pub use io_error::IOErrorKind;
 
-use crate::Tag;
-
 pub type IOResult<D> = Result<D, IOError>;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Debug)]
 pub enum ErrorKind {
-    WouldBlock(Option<Tag>),
-    Interrupted,
-    IOError,
+    IO(IOError),
+    WouldBlock,
     IllegalScopeInput,
-    Others,
+    Unknown,
 }
 
-impl Debug for ErrorKind {
+impl Display for ErrorKind {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            ErrorKind::WouldBlock(_) => write!(f, "WouldBlock, retry later"),
-            ErrorKind::Interrupted => write!(f, "Interrupted, retry later"),
-            ErrorKind::IOError => write!(f, "IOError"),
+            ErrorKind::IO(e) => write!(f, "{}", e),
+            ErrorKind::WouldBlock => write!(f, "WouldBlock"),
             ErrorKind::IllegalScopeInput => write!(f, "IllegalScopeInput"),
-            ErrorKind::Others => write!(f, "Unknown"),
+            ErrorKind::Unknown => write!(f, "Unknown"),
         }
     }
 }
 
+#[derive(Debug)]
 pub struct JobExecError {
-    pub kind: ErrorKind,
-    pub is_system: bool,
-    cause: Box<dyn Error + Send>,
+    kind: ErrorKind,
+    cause: Option<Box<dyn Error + Send + 'static>>,
 }
 
 impl JobExecError {
-    pub fn new<E: Error + Send + 'static>(kind: ErrorKind, cause: E) -> Self {
-        JobExecError { kind, is_system: false, cause: Box::new(cause) }
+    pub fn new(kind: ErrorKind, cause: Option<Box<dyn Error + Send + 'static>>) -> Self {
+        JobExecError { kind, cause }
     }
 
     pub fn panic(msg: String) -> Self {
         let err: Box<dyn Error + Send + Sync> = msg.into();
-        JobExecError { kind: ErrorKind::Others, is_system: false, cause: err as Box<dyn Error + Send> }
-    }
-
-    pub(crate) fn from_box(err: Box<dyn Error + Send>) -> Self {
-        if let Some(e) = err.downcast_ref::<JobExecError>() {
-            JobExecError { kind: e.kind.clone(), is_system: e.is_system, cause: err }
-        } else if let Some(e) = err.downcast_ref::<IOError>() {
-            if e.is_interrupted() {
-                JobExecError { kind: ErrorKind::Interrupted, is_system: true, cause: err }
-            } else if e.is_would_block() {
-                JobExecError { kind: ErrorKind::WouldBlock(None), is_system: true, cause: err }
-            } else {
-                JobExecError { kind: ErrorKind::IOError, is_system: true, cause: err }
-            }
-        } else {
-            JobExecError { kind: ErrorKind::Others, is_system: false, cause: err }
-        }
-    }
-
-    pub fn set_system(&mut self) {
-        self.is_system = true;
+        JobExecError { kind: ErrorKind::Unknown, cause: Some(err as Box<dyn Error + Send + 'static>) }
     }
 
     pub fn set_kind(&mut self, kind: ErrorKind) {
         self.kind = kind;
     }
 
-    #[inline]
-    pub fn can_be_retried(&self) -> bool {
-        matches!(self.kind, ErrorKind::WouldBlock(_) | ErrorKind::Interrupted)
-    }
-
-    pub fn get_cause(&self) -> &Box<dyn Error + Send> {
-        &self.cause
-    }
-
-    pub fn as_ref<E: Error + 'static>(&self) -> Option<&E> {
-        self.cause.downcast_ref::<E>()
-    }
-}
-
-impl Debug for JobExecError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.is_system {
-            write!(f, "system error: ")?;
-        } else {
-            write!(f, "user error: ")?;
+    pub fn is_fatal(&self) -> bool {
+        match &self.kind {
+            ErrorKind::WouldBlock => false,
+            ErrorKind::IO(err) => err.is_fatal(),
+            _ => true,
         }
-        write!(f, "kind({:?}), caused by:{}", self.kind, self.cause)
+    }
+
+    pub fn is_would_block(&self) -> bool {
+        match &self.kind {
+            ErrorKind::WouldBlock => true,
+            ErrorKind::IO(err) => err.is_would_block(),
+            _ => false,
+        }
+    }
+
+    pub fn get_kind(&self) -> &ErrorKind {
+        &self.kind
+    }
+
+    pub fn get_cause(&self) -> Option<&Box<dyn Error + Send + 'static>> {
+        self.cause.as_ref()
     }
 }
 
 impl Display for JobExecError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        Debug::fmt(self, f)
+        write!(f, "JobError: {}, ", self.kind)?;
+        if let Some(cause) = self.cause.as_ref() {
+            write!(f, "caused by: {}", cause)?;
+        }
+        Ok(())
     }
 }
 
-impl Error for JobExecError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        Some(self.cause.as_ref())
-    }
-}
+impl Error for JobExecError {}
 
 impl From<IOError> for JobExecError {
     fn from(err: IOError) -> Self {
-        if err.is_interrupted() {
-            JobExecError { kind: ErrorKind::Interrupted, is_system: true, cause: Box::new(err) }
-        } else if err.is_would_block() {
-            JobExecError { kind: ErrorKind::WouldBlock(None), is_system: true, cause: Box::new(err) }
-        } else {
-            JobExecError { kind: ErrorKind::IOError, is_system: true, cause: Box::new(err) }
-        }
+        JobExecError::new(ErrorKind::IO(err), None)
     }
 }
 
-impl From<Box<dyn Error + Send>> for JobExecError {
-    fn from(err: Box<dyn Error + Send>) -> Self {
-        JobExecError::from_box(err)
+impl From<Box<dyn Error + Send + 'static>> for JobExecError {
+    fn from(err: Box<dyn Error + Send + 'static>) -> Self {
+        JobExecError { kind: ErrorKind::Unknown, cause: Some(err) }
     }
 }
 
 impl From<Box<dyn Error + Send + Sync>> for JobExecError {
     fn from(err: Box<dyn Error + Send + Sync>) -> Self {
-        let err = err as Box<dyn Error + Send>;
-        JobExecError::from_box(err)
+        JobExecError { kind: ErrorKind::Unknown, cause: Some(err) }
     }
 }
 
@@ -159,28 +128,20 @@ impl From<String> for JobExecError {
 
 impl From<io::Error> for JobExecError {
     fn from(err: io::Error) -> Self {
-        match err.kind() {
-            io::ErrorKind::WouldBlock => {
-                JobExecError { kind: ErrorKind::WouldBlock(None), is_system: true, cause: Box::new(err) }
-            }
-            io::ErrorKind::Interrupted => {
-                JobExecError { kind: ErrorKind::Interrupted, is_system: true, cause: Box::new(err) }
-            }
-            _ => JobExecError { kind: ErrorKind::IOError, is_system: true, cause: Box::new(err) },
-        }
+        JobExecError::new(ErrorKind::IO(IOError::from(err)), None)
     }
 }
 
-#[macro_export]
-macro_rules! throw_user_error {
-    ($kind: expr) => {{
-        let pos = concat!(file!(), ':', line!());
-        let str_err = format!("occurred at {}", pos);
-        let mut err = JobExecError::from(str_err);
-        err.set_kind($kind);
-        return Err(err);
-    }};
-}
+// #[macro_export]
+// macro_rules! throw_user_error {
+//     ($kind: expr) => {{
+//         let pos = concat!(file!(), ':', line!());
+//         let str_err = format!("occurred at {}", pos);
+//         let mut err = JobExecError::from(str_err);
+//         err.set_kind($kind);
+//         return Err(err);
+//     }};
+// }
 
 // TODO: Make build error enumerate.;
 pub enum BuildJobError {
@@ -360,29 +321,5 @@ macro_rules! throw_io_error {
         err.set_origin(origin.to_string());
         err.set_ch_id($id);
         err
-    }};
-}
-
-#[macro_export]
-macro_rules! would_block {
-    ($msg: expr) => {{
-        let origin = concat!(file!(), ':', line!());
-        let cause: Box<dyn std::error::Error + Send + Sync> = $msg.into();
-        let mut err = IOError::would_block();
-        err.set_origin(origin.to_string());
-        err.set_cause(cause);
-        Err(err)
-    }};
-}
-
-#[macro_export]
-macro_rules! interrupt {
-    ($msg: expr) => {{
-        let origin = concat!(file!(), ':', line!());
-        let cause: Box<dyn std::error::Error + Send + Sync> = $msg.into();
-        let mut err = IOError::interrupted();
-        err.set_origin(origin.to_string());
-        err.set_cause(cause);
-        Err(err)
     }};
 }

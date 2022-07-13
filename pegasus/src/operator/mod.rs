@@ -324,7 +324,7 @@ impl Operator {
 
         let mut result = self.fire_inner();
         if let Err(err) = result {
-            if !err.can_be_retried() {
+            if err.is_fatal() {
                 return Err(err);
             } else {
                 result = Err(err);

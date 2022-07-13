@@ -18,7 +18,7 @@ use std::cell::RefMut;
 use crate::communication::input::input::InputBlockGuard;
 use crate::communication::input::InputHandle;
 use crate::data::MicroBatch;
-use crate::errors::{ErrorKind, JobExecError};
+use crate::errors::JobExecError;
 use crate::{Data, Tag};
 
 pub struct InputSession<'a, D: Data> {
@@ -75,21 +75,18 @@ impl<'a, D: Data> InputSession<'a, D> {
                                 self.for_each_batch_of(&batch.tag, &mut func)?;
                             }
                         }
-                        Err(mut err) => match &mut err.kind {
-                            ErrorKind::WouldBlock(_) => {
+                        Err(err) => {
+                            if err.is_would_block() {
                                 if batch.tag.is_root() {
                                     self.on_interrupt(batch);
                                     return Err(err);
                                 } else {
                                     self.on_interrupt(batch);
                                 }
-                            }
-                            ErrorKind::Interrupted => {
-                                self.on_interrupt(batch);
+                            } else {
                                 return Err(err);
                             }
-                            _ => return Err(err),
-                        },
+                        }
                     }
                     if self.scope_level == 0 {
                         return Ok(());
@@ -124,22 +121,18 @@ impl<'a, D: Data> InputSession<'a, D> {
                         return Ok(());
                     }
                 }
-                Err(err) => match &err.kind {
-                    ErrorKind::WouldBlock(_) => {
+                Err(err) => {
+                    if err.is_would_block() {
                         if batch.tag.is_root() {
                             self.on_interrupt(batch);
                             return Err(err);
                         } else {
                             self.on_interrupt(batch);
-                            return Ok(());
                         }
-                    }
-                    ErrorKind::Interrupted => {
-                        self.on_interrupt(batch);
+                    } else {
                         return Err(err);
                     }
-                    _ => return Err(err),
-                },
+                }
             }
         }
         Ok(())

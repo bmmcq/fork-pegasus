@@ -14,25 +14,41 @@
 //! limitations under the License.
 
 use std::collections::HashMap;
-use std::io;
 use std::net::TcpStream;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use crossbeam_utils::sync::ShardedLock;
-use pegasus_common::channel::{MPMCReceiver, MPMCSender, MessageReceiver};
+use net_rx::{InboxRegister, NetReceiver};
+use pegasus_common::channel::{MessageReceiver, RecvError};
 use pegasus_common::codec::Decode;
 
+use crate::config::{BlockMode::Blocking, ConnectionParams};
 use crate::message::Payload;
 use crate::{NetError, Server};
 
 mod decode;
 mod net_rx;
+
 pub use decode::{MessageDecoder, ReentrantDecoder, ReentrantSlabDecoder, SimpleBlockDecoder};
-use net_rx::{InboxRegister, NetReceiver};
 
-use crate::config::{BlockMode::Blocking, ConnectionParams};
+#[derive(Debug)]
+pub enum IPCRecvError {
+    RecvErr(RecvError),
+    DecodeErr(std::io::Error),
+}
 
+impl From<RecvError> for IPCRecvError {
+    fn from(e: RecvError) -> Self {
+        IPCRecvError::RecvErr(e)
+    }
+}
+
+impl IPCRecvError {
+    pub fn is_recv_eof(&self) -> bool {
+        matches!(self, IPCRecvError::RecvErr(e) if e.is_eof() )
+    }
+}
 /// The receiver for network's applications to receive data from all remote peers;
 pub struct IPCReceiver<T> {
     inbox: MessageReceiver<Payload>,
@@ -44,11 +60,13 @@ impl<T: Decode> IPCReceiver<T> {
         IPCReceiver { inbox, _ph: std::marker::PhantomData }
     }
 
-    pub fn recv(&self) -> io::Result<Option<T>> {
+    pub fn recv(&self) -> Result<Option<T>, IPCRecvError> {
         if let Some(payload) = self.inbox.try_recv()? {
             let mut reader = payload.as_ref();
-            let item = T::read_from(&mut reader)?;
-            Ok(Some(item))
+            match T::read_from(&mut reader) {
+                Ok(item) => Ok(Some(item)),
+                Err(e) => Err(IPCRecvError::DecodeErr(e)),
+            }
         } else {
             Ok(None)
         }
@@ -91,7 +109,7 @@ fn remove_remote_register(local: u64, remote: u64) -> Option<InboxRegister> {
 pub fn register_remotes_receiver<T: Decode + 'static>(
     channel_id: u128, local: u64, remotes: &[u64],
 ) -> Result<IPCReceiver<T>, NetError> {
-    let (tx, rx) = pegasus_common::channel::unbound::<Payload>();
+    let (mut tx, rx) = pegasus_common::channel::unbound::<Payload>();
     let lock = REMOTE_RECV_REGISTER
         .read()
         .expect("failure to lock REMOTE_RECV_REGISTER");

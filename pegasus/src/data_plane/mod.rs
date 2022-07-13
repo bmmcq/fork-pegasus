@@ -15,7 +15,6 @@
 
 use std::collections::LinkedList;
 
-use pegasus_common::channel::MPMCSender;
 use pegasus_network::{IPCReceiver, IPCSender};
 
 use crate::channel_id::ChannelId;
@@ -28,12 +27,6 @@ pub trait Push<T>: Send {
     /// Push message into communication_old channel, returns [`Err(IOError)`] if failed;
     /// Check the error to get more information;
     fn push(&mut self, msg: T) -> Result<(), IOError>;
-
-    /// If an error occurred when invoking the `push` function, the message failed to be pushed can
-    /// be get back by invoke this function;
-    fn check_failed(&mut self) -> Option<T> {
-        None
-    }
 
     /// Since some implementation may buffer messages, override this method
     /// to do flush;
@@ -58,7 +51,7 @@ pub trait Pull<T>: Send {
     ///
     /// Error([`Err(IOError)`]) occurs if the channel is in exception; Check the returned [`IOError`]
     /// for more details about the error;
-    fn next(&mut self) -> Result<Option<T>, IOError>;
+    fn pull_next(&mut self) -> Result<Option<T>, IOError>;
 
     /// Check if there is any message in the channel;
     fn has_next(&mut self) -> Result<bool, IOError>;
@@ -68,11 +61,6 @@ impl<T, P: ?Sized + Push<T>> Push<T> for Box<P> {
     #[inline]
     fn push(&mut self, msg: T) -> Result<(), IOError> {
         (**self).push(msg)
-    }
-
-    #[inline]
-    fn check_failed(&mut self) -> Option<T> {
-        (**self).check_failed()
     }
 
     #[inline]
@@ -88,8 +76,8 @@ impl<T, P: ?Sized + Push<T>> Push<T> for Box<P> {
 
 impl<T, P: ?Sized + Pull<T>> Pull<T> for Box<P> {
     #[inline]
-    fn next(&mut self) -> Result<Option<T>, IOError> {
-        (**self).next()
+    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
+        (**self).pull_next()
     }
 
     fn has_next(&mut self) -> Result<bool, IOError> {
@@ -182,7 +170,7 @@ pub fn build_local_channels<T: Data>(id: ChannelId, workers: usize) -> LinkedLis
         let ch = ChannelResource { ch_id: id, pushes, pull };
         list.push_back(ch);
     }
-    for tx in ch_txs {
+    for mut tx in ch_txs {
         tx.close();
     }
     list
@@ -229,7 +217,7 @@ pub fn build_channels<T: Data>(
             local_pull.push_back(pull);
         }
 
-        for t in ch_txs {
+        for mut t in ch_txs {
             t.close();
         }
     }
@@ -326,7 +314,7 @@ mod test {
 
         let mut count = 0;
         loop {
-            match pull.next() {
+            match pull.pull_next() {
                 Ok(Some(_item)) => {
                     assert_eq!(_item as usize % workers, index as usize);
                     count += 1;
@@ -336,7 +324,7 @@ mod test {
                     std::thread::sleep(std::time::Duration::from_millis(50))
                 }
                 Err(e) => {
-                    if e.is_source_exhaust() {
+                    if e.is_eof() {
                         break;
                     } else {
                         panic!("get error {}", e);
@@ -509,7 +497,7 @@ mod test {
                         }
                         let mut count = 0;
                         loop {
-                            match pull.next() {
+                            match pull.pull_next() {
                                 Ok(Some(mut _item)) => {
                                     for i in _item {
                                         let recv_channel_index = i >> 32;
@@ -521,7 +509,7 @@ mod test {
                                 }
                                 Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
                                 Err(e) => {
-                                    if e.is_source_exhaust() {
+                                    if e.is_eof() {
                                         info!(
                                             "worker[{}] has received {}, expect {}",
                                             worker_id, count, message_size
@@ -607,7 +595,7 @@ mod test {
                         }
                         let mut count = 0;
                         loop {
-                            match pull.next() {
+                            match pull.pull_next() {
                                 Ok(Some(mut _item)) => {
                                     count += 1;
                                 }
@@ -619,7 +607,7 @@ mod test {
                                     std::thread::sleep(std::time::Duration::from_millis(50))
                                 }
                                 Err(e) => {
-                                    if e.is_source_exhaust() {
+                                    if e.is_eof() {
                                         info!(
                                             "worker[{}] has received {}, expect {}",
                                             worker_id, count, message_count
