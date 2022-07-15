@@ -18,12 +18,12 @@ use crate::data::MicroBatch;
 use crate::data_plane::{GeneralPush, Push};
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
-use crate::progress::{DynPeers, EndOfScope, EndSyncSignal};
+use crate::progress::{DynPeers, Eos, EndSyncSignal};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
 #[allow(dead_code)]
-pub struct EventEmitPush<T: Data> {
+pub struct EventEmitPush<T> {
     pub ch_info: ChannelInfo,
     pub source_worker: u32,
     pub target_worker: u32,
@@ -34,7 +34,7 @@ pub struct EventEmitPush<T: Data> {
 }
 
 #[allow(dead_code)]
-impl<T: Data> EventEmitPush<T> {
+impl<T> EventEmitPush<T> {
     pub fn new(
         info: ChannelInfo, source_worker: u32, target_worker: u32, push: GeneralPush<MicroBatch<T>>,
         emitter: EventEmitter,
@@ -54,23 +54,23 @@ impl<T: Data> EventEmitPush<T> {
         self.push_monitor.get(tag).map(|(_, _, x)| *x)
     }
 
-    pub fn push_end(&mut self, mut end: EndOfScope, children: DynPeers) -> IOResult<()> {
+    pub fn push_end(&mut self, mut end: Eos, children: DynPeers) -> IOResult<()> {
         if end.tag.len() == self.push_monitor.scope_level as usize {
             assert_eq!(
-                end.peers().value(),
+                end.parent_peers().len(),
                 1,
                 "peers = {} of scope {:?} should be sync;",
-                end.peers().value(),
+                end.parent_peers().len(),
                 end.tag
             );
-            if end.peers_contains(self.source_worker) {
+            if end.has_parent(self.source_worker) {
                 trace_worker!(
                     "output[{:?}] send end of {:?} to channel[{}] to worker {}, peers {:?} => {:?}",
                     self.ch_info.source_port,
                     end.tag,
                     self.ch_info.id.index,
                     self.target_worker,
-                    end.peers(),
+                    end.parent_peers(),
                     children
                 );
                 end.update_peers(children);
@@ -86,14 +86,14 @@ impl<T: Data> EventEmitPush<T> {
         }
     }
 
-    pub fn sync_end(&mut self, mut end: EndOfScope, children: DynPeers) -> IOResult<()> {
-        if end.peers().value() == 1 {
+    pub fn sync_end(&mut self, mut end: Eos, children: DynPeers) -> IOResult<()> {
+        if end.parent_peers().len() == 1 {
             // need not sync;
             return self.push_end(end, children);
         }
         if end.tag.len() == self.push_monitor.scope_level as usize {
             assert!(
-                end.peers().contains_source(self.source_worker),
+                end.parent_peers().contains(self.source_worker),
                 "send end of {:?} without allow ",
                 end.tag
             );
@@ -109,7 +109,7 @@ impl<T: Data> EventEmitPush<T> {
                 self.ch_info.id.index,
                 self.target_worker,
                 size.2,
-                end.peers(),
+                end.parent_peers(),
                 children,
             );
         } else {
@@ -129,7 +129,7 @@ impl<T: Data> EventEmitPush<T> {
     }
 }
 
-impl<D: Data> Push<MicroBatch<D>> for EventEmitPush<D> {
+impl<D> Push<MicroBatch<D>> for EventEmitPush<D> {
     fn push(&mut self, mut batch: MicroBatch<D>) -> IOResult<()> {
         let len = batch.len();
         if let Some(mut end) = batch.take_end() {
@@ -147,7 +147,7 @@ impl<D: Data> Push<MicroBatch<D>> for EventEmitPush<D> {
                     self.ch_info.id.index,
                     self.target_worker,
                     end.global_total_send,
-                    end.peers(),
+                    end.parent_peers(),
                 );
             batch.set_end(end);
             batch.set_seq(seq as u64);

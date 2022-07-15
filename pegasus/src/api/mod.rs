@@ -23,13 +23,13 @@ pub use primitive::unary::Unary;
 
 pub mod notification {
 
-    use crate::progress::EndOfScope;
+    use crate::progress::Eos;
     use crate::Tag;
 
     #[derive(Debug, Clone)]
     pub struct End {
         pub(crate) port: usize,
-        pub(crate) end: EndOfScope,
+        pub(crate) end: Eos,
     }
 
     #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ pub mod notification {
             self.port
         }
 
-        pub fn take(self) -> EndOfScope {
+        pub fn take(self) -> Eos {
             self.end
         }
     }

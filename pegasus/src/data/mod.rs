@@ -18,8 +18,9 @@ use std::fmt::Debug;
 use pegasus_common::buffer::{Buffer, ReadBuffer};
 use pegasus_common::codec::{Decode, Encode};
 use pegasus_common::io::{ReadExt, WriteExt};
+use crate::data::batching::{RoBatch, WoBatch};
 
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::tag::Tag;
 
 pub trait Data: Clone + Send + Sync + Debug + Encode + Decode + 'static {}
@@ -33,9 +34,9 @@ pub struct MicroBatch<T> {
     /// sequence of the data batch;
     seq: u64,
     /// if this is the last batch of a scope;
-    end: Option<EndOfScope>,
+    end: Option<Eos>,
     /// read only data details;
-    data: ReadBuffer<T>,
+    data: RoBatch<T>,
 
     is_discarded: bool,
 }
@@ -49,27 +50,27 @@ impl<D> MicroBatch<D> {
             seq: 0,
             src: 0,
             end: None,
-            data: ReadBuffer::new(),
+            data: RoBatch::default(),
             is_discarded: false,
         }
     }
 
-    pub fn new(tag: Tag, src: u32, data: ReadBuffer<D>) -> Self {
+    pub fn new(tag: Tag, src: u32, data: RoBatch<D>) -> Self {
         MicroBatch { tag, src, seq: 0, end: None, data, is_discarded: false }
     }
 
-    pub fn last(src: u32, end: EndOfScope) -> Self {
+    pub fn last(src: u32, end: Eos) -> Self {
         MicroBatch {
             tag: end.tag.clone(),
             src,
             seq: 0,
             end: Some(end),
-            data: ReadBuffer::new(),
+            data: RoBatch::default(),
             is_discarded: false,
         }
     }
 
-    pub fn set_end(&mut self, end: EndOfScope) {
+    pub fn set_end(&mut self, end: Eos) {
         self.end = Some(end);
     }
 
@@ -92,24 +93,24 @@ impl<D> MicroBatch<D> {
         self.end.is_some()
     }
 
-    pub fn get_end(&self) -> Option<&EndOfScope> {
+    pub fn get_end(&self) -> Option<&Eos> {
         self.end.as_ref()
     }
 
-    pub fn get_end_mut(&mut self) -> Option<&mut EndOfScope> {
+    pub fn get_end_mut(&mut self) -> Option<&mut Eos> {
         self.end.as_mut()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.len() == 0
+        self.data.is_empty()
     }
 
-    pub fn take_end(&mut self) -> Option<EndOfScope> {
+    pub fn take_end(&mut self) -> Option<Eos> {
         self.end.take()
     }
 
-    pub fn take_data(&mut self) -> ReadBuffer<D> {
-        std::mem::replace(&mut self.data, ReadBuffer::new())
+    pub fn take_data(&mut self) -> RoBatch<D> {
+        std::mem::replace(&mut self.data, RoBatch::default())
     }
 
     pub fn clear(&mut self) {
@@ -203,12 +204,14 @@ impl<D: Data> Decode for MicroBatch<D> {
         let seq = reader.read_u64()?;
         let src = reader.read_u32()?;
         let len = reader.read_u64()? as usize;
-        let mut buf = Buffer::with_capacity(len);
+        let mut buf = WoBatch::new(len);
         for _ in 0..len {
             buf.push(D::read_from(reader)?);
         }
-        let data = buf.into_read_only();
-        let end = Option::<EndOfScope>::read_from(reader)?;
+        let data = buf.finalize();
+        let end = Option::<Eos>::read_from(reader)?;
         Ok(MicroBatch { tag, src, seq, end, data, is_discarded: false })
     }
 }
+
+pub mod batching;

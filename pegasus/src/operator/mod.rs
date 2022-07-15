@@ -29,7 +29,7 @@ use crate::data_plane::{GeneralPull, GeneralPush};
 use crate::errors::{IOResult, JobExecError};
 use crate::event::emitter::EventEmitter;
 use crate::graph::Port;
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::schedule::state::inbound::EndNotify;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
@@ -52,7 +52,7 @@ impl<T: ?Sized + Notifiable> Notifiable for Box<T> {
 
 struct MultiInputsMerge {
     input_size: usize,
-    end_merge: Vec<TidyTagMap<(EndOfScope, IntSet<u64>)>>,
+    end_merge: Vec<TidyTagMap<(Eos, IntSet<u64>)>>,
 }
 
 impl MultiInputsMerge {
@@ -64,7 +64,7 @@ impl MultiInputsMerge {
         MultiInputsMerge { input_size, end_merge }
     }
 
-    fn merge_end(&mut self, n: End) -> Vec<EndOfScope> {
+    fn merge_end(&mut self, n: End) -> Vec<Eos> {
         let idx = n.tag().len();
         assert!(idx < self.end_merge.len());
         let mut ends = vec![];
@@ -173,7 +173,7 @@ impl DefaultNotify {
         }
     }
 
-    fn merge_end(&mut self, end: End) -> Vec<EndOfScope> {
+    fn merge_end(&mut self, end: End) -> Vec<Eos> {
         match self {
             DefaultNotify::SISO | DefaultNotify::SIMO(_) => vec![end.take()],
             DefaultNotify::MISO(mim) => mim.merge_end(end),

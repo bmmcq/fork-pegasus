@@ -61,7 +61,7 @@ fn has_any<T: Data>(mut stream: Stream<T>) -> Result<SingleItem<bool>, BuildJobE
                 if let Some(end) = batch.take_end() {
                     if any_map.remove(batch.tag()).is_none() {
                         let worker = crate::worker_id::get_current_worker().index;
-                        if end.peers_contains(worker) {
+                        if end.has_parent(worker) {
                             output
                                 .new_session(batch.tag())?
                                 .give_last(Single(false), end)?;

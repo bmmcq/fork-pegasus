@@ -235,10 +235,7 @@ impl Tag {
 
     #[inline]
     pub fn is_root(&self) -> bool {
-        match self {
-            Tag::Root => true,
-            _ => false,
-        }
+        matches!(self, Tag::Root)
     }
 }
 

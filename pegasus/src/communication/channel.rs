@@ -16,7 +16,7 @@
 use crate::api::function::{BatchRouteFunction, FnResult, RouteFunction};
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
 use crate::channel_id::{ChannelId, ChannelInfo};
-use crate::communication::buffer::ScopeBufferPool;
+use crate::communication::buffer::ScopeBuffer;
 use crate::communication::cancel::{CancelHandle, SingleConsCancel};
 use crate::communication::decorator::aggregate::AggregateBatchPush;
 use crate::communication::decorator::broadcast::BroadcastBatchPush;
@@ -220,7 +220,7 @@ impl<T: Data> Channel<T> {
                 let (info, pushes, pull, notify) = self.build_remote(scope_level, target, id, dfb)?;
                 let mut buffers = Vec::with_capacity(pushes.len());
                 for _ in 0..pushes.len() {
-                    let b = ScopeBufferPool::new(batch_size, batch_capacity, scope_level);
+                    let b = ScopeBuffer::new(batch_size, batch_capacity, scope_level);
                     buffers.push(b);
                 }
                 let push = ExchangeByDataPush::new(info, r, buffers, pushes);

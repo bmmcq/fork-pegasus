@@ -29,7 +29,7 @@ use crate::data_plane::{GeneralPull, Pull};
 use crate::errors::IOResult;
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
@@ -48,8 +48,8 @@ pub struct InputHandle<D: Data> {
     pub ch_info: ChannelInfo,
     pull: GeneralPull<MicroBatch<D>>,
     stash_index: TidyTagMap<StashedQueue<D>>,
-    current_end: VecDeque<EndOfScope>,
-    parent_ends: VecDeque<EndOfScope>,
+    current_end: VecDeque<Eos>,
+    parent_ends: VecDeque<Eos>,
     data_exhaust: bool,
     event_emitter: EventEmitter,
     // scope skip manager:
@@ -201,7 +201,7 @@ impl<D: Data> InputHandle<D> {
         }
     }
 
-    pub(crate) fn end_on(&mut self, end: EndOfScope) {
+    pub(crate) fn end_on(&mut self, end: Eos) {
         self.stash_index.remove(&end.tag);
         self.current_end.push_back(end);
     }
@@ -214,7 +214,7 @@ impl<D: Data> InputHandle<D> {
                 .all(|(_, s)| s.is_empty())
     }
 
-    pub(crate) fn extract_end(&mut self) -> Option<EndOfScope> {
+    pub(crate) fn extract_end(&mut self) -> Option<Eos> {
         if !self.current_end.is_empty() {
             self.current_end.pop_front()
         } else {
@@ -250,7 +250,7 @@ impl<D: Data> InputHandle<D> {
                             "channel[{}] pulled end of scope{:?} peers: {:?}",
                             self.ch_info.index(),
                             batch.tag,
-                            end.peers()
+                            end.parent_peers()
                         );
                         self.parent_ends.push_back(end);
                     } else {
@@ -290,7 +290,7 @@ impl<D: Data> InputHandle<D> {
                                         "channel[{}] pulled end of scope{:?} peers: {:?}",
                                         self.ch_info.id.index,
                                         end.tag,
-                                        end.peers(),
+                                        end.parent_peers(),
                                     );
                                 }
                             }
@@ -445,7 +445,7 @@ impl<D: Data> InputProxy for RefWrapInput<D> {
         self.inbound.borrow_mut().block(tag)
     }
 
-    fn extract_end(&self) -> Option<EndOfScope> {
+    fn extract_end(&self) -> Option<Eos> {
         self.inbound.borrow_mut().extract_end()
     }
 

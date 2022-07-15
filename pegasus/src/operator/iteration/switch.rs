@@ -6,13 +6,13 @@ use crate::communication::output::{new_output, OutputProxy};
 use crate::data::MicroBatch;
 use crate::errors::JobExecError;
 use crate::operator::{Notifiable, OperatorCore};
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::tag::tools::map::TidyTagMap;
 use crate::Data;
 
 struct IterateState {
     iterating: bool,
-    src_end: Option<EndOfScope>,
+    src_end: Option<Eos>,
 }
 
 impl IterateState {
@@ -20,11 +20,11 @@ impl IterateState {
         IterateState { iterating: true, src_end: None }
     }
 
-    fn set_end(&mut self, end: EndOfScope) {
+    fn set_end(&mut self, end: Eos) {
         self.src_end = Some(end);
     }
 
-    fn take_end(&mut self) -> Option<EndOfScope> {
+    fn take_end(&mut self) -> Option<Eos> {
         self.src_end.take()
     }
 
@@ -45,7 +45,7 @@ pub(crate) struct SwitchOperator<D> {
     //  [1] -> [(end of 1), (end of root)]
     //
     iterate_states: TidyTagMap<IterateState>,
-    parent_parent_scope_ends: Vec<Vec<EndOfScope>>,
+    parent_parent_scope_ends: Vec<Vec<Eos>>,
     has_synchronized: bool,
 }
 

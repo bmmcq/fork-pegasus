@@ -2,7 +2,7 @@ use crate::communication::IOResult;
 use crate::data::MicroBatch;
 use crate::data_plane::{GeneralPush, Push};
 use crate::graph::Port;
-use crate::progress::{DynPeers, EndOfScope, EndSyncSignal};
+use crate::progress::{DynPeers, Eos, EndSyncSignal};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
@@ -20,9 +20,9 @@ struct ScopeEndPanel {
 impl ScopeEndPanel {
     fn new(src: u32, end: EndSyncSignal) -> Self {
         let mut merged = DynPeers::empty();
-        merged.add_source(src);
+        merged.add_peer(src);
         let (end, children) = end.take();
-        let expect_src = end.peers().clone();
+        let expect_src = end.parent_peers().clone();
         ScopeEndPanel {
             tag: end.tag,
             expect_src,
@@ -34,11 +34,11 @@ impl ScopeEndPanel {
         }
     }
 
-    fn merge(&mut self, src: u32, end: EndSyncSignal) -> Option<EndOfScope> {
+    fn merge(&mut self, src: u32, end: EndSyncSignal) -> Option<Eos> {
         let (end, children) = end.take();
         assert_eq!(end.tag, self.tag);
-        assert_eq!(end.peers(), &self.expect_src);
-        self.in_merge.add_source(src);
+        assert_eq!(end.parent_peers(), &self.expect_src);
+        self.in_merge.add_peer(src);
         self.children.merge(children);
         self.count += end.total_send;
         self.global_count += end.global_total_send;
@@ -58,13 +58,13 @@ impl ScopeEndPanel {
 }
 
 pub trait EndNotify: Send + 'static {
-    fn notify(&mut self, end: EndOfScope) -> IOResult<()>;
+    fn notify(&mut self, end: Eos) -> IOResult<()>;
 
     fn close_notify(&mut self);
 }
 
 impl<T: Data> EndNotify for GeneralPush<MicroBatch<T>> {
-    fn notify(&mut self, end: EndOfScope) -> IOResult<()> {
+    fn notify(&mut self, end: Eos) -> IOResult<()> {
         let last = MicroBatch::last(0, end);
         if last.tag().is_root() {
             self.push(last)?;
@@ -104,7 +104,7 @@ impl InboundStreamState {
                 self.port,
                 end.tag,
                 end.total_send,
-                end.peers(),
+                end.parent_peers(),
                 child
             );
             end.update_peers(child);
@@ -138,7 +138,7 @@ impl InboundStreamState {
                     e.tag,
                     e.total_send,
                     e.global_total_send,
-                    e.peers()
+                    e.parent_peers()
                 );
                 self.notify.notify(e)?;
             } else {

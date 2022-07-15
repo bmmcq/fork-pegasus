@@ -28,7 +28,7 @@ use crate::communication::output::{new_output, OutputProxy};
 use crate::data::MicroBatch;
 use crate::errors::{ErrorKind, JobExecError};
 use crate::operator::{Notifiable, OperatorCore};
-use crate::progress::{DynPeers, EndOfScope};
+use crate::progress::{DynPeers, Eos};
 use crate::stream::{Single, SingleItem, Stream};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{BuildJobError, Data, Tag};
@@ -163,7 +163,7 @@ impl<D: Data> OperatorCore for ForkSubtaskOperator<D> {
                         let tag = Tag::inherit(&p, cur);
                         trace_worker!("fork scope {}th subtask {:?}", fp.forked_child, tag);
                         let mut sub_batch = new_batch(tag.clone(), worker, buf);
-                        let end = EndOfScope::new(tag, DynPeers::single(worker), 1, 1);
+                        let end = Eos::new(tag, DynPeers::single(worker), 1, 1);
                         sub_batch.set_end(end);
                         output2.push_batch(sub_batch)?;
                         *in_progress += 1;
@@ -230,7 +230,7 @@ struct ZipSubtaskOperator<P, S> {
     peers: u32,
     scope_level: u32,
     parent: TidyTagMap<ZipSubtaskBuf<P>>,
-    parent_parent_ends: Vec<Vec<EndOfScope>>,
+    parent_parent_ends: Vec<Vec<Eos>>,
     zip_guard: UnsafeRcPtr<RefCell<TidyTagMap<u32>>>,
     _ph: std::marker::PhantomData<S>,
 }
@@ -433,8 +433,8 @@ struct ZipSubtaskBuf<D> {
     head: usize,
     len: usize,
     is_canceled: bool,
-    cur_end: Option<EndOfScope>,
-    end: Option<EndOfScope>,
+    cur_end: Option<Eos>,
+    end: Option<Eos>,
 }
 
 impl<D> ZipSubtaskBuf<D> {
@@ -449,11 +449,11 @@ impl<D> ZipSubtaskBuf<D> {
         }
     }
 
-    fn cur_end(&mut self, end: EndOfScope) {
+    fn cur_end(&mut self, end: Eos) {
         self.cur_end = Some(end);
     }
 
-    fn end(&mut self, end: EndOfScope) {
+    fn end(&mut self, end: Eos) {
         self.end = Some(end);
     }
 

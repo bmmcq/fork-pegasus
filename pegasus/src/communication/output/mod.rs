@@ -27,7 +27,7 @@ use crate::communication::output::handle::OutputHandle;
 pub use crate::communication::output::output::OutputAbortNotify;
 use crate::data::MicroBatch;
 use crate::errors::IOResult;
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::{Data, Tag};
 
 pub struct BlockScope {
@@ -72,7 +72,7 @@ pub trait OutputProxy: AsAny + Send {
 
     /// Notify this output that the scope with tag was closed, no more data of this scope will be send
     /// on this output;
-    fn notify_end(&self, end: EndOfScope) -> IOResult<()>;
+    fn notify_end(&self, end: Eos) -> IOResult<()>;
 
     /// Stop to output data of scope with this tag in output port from now on;
     fn cancel(&self, tag: &Tag) -> IOResult<()>;
@@ -158,7 +158,7 @@ impl<D: Data> OutputProxy for RefWrapOutput<D> {
     }
 
     #[inline]
-    fn notify_end(&self, end: EndOfScope) -> IOResult<()> {
+    fn notify_end(&self, end: Eos) -> IOResult<()> {
         self.output.borrow_mut().notify_end(end)
     }
 
@@ -182,3 +182,5 @@ impl<D: Data> OutputProxy for RefWrapOutput<D> {
 pub fn new_output<'a, D: Data>(generic: &'a Box<dyn OutputProxy>) -> &'a RefWrapOutput<D> {
     RefWrapOutput::<D>::downcast(generic)
 }
+
+mod producers;

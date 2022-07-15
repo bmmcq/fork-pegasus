@@ -20,7 +20,7 @@ use crate::data::MicroBatch;
 use crate::data_plane::GeneralPull;
 use crate::errors::IOResult;
 use crate::event::emitter::EventEmitter;
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::{Data, Tag};
 
 /// Input abstraction without data type;
@@ -29,7 +29,7 @@ pub trait InputProxy: AsAny + Send {
 
     fn block(&self, tag: &Tag) -> InputBlockGuard;
 
-    fn extract_end(&self) -> Option<EndOfScope>;
+    fn extract_end(&self) -> Option<Eos>;
 
     fn is_exhaust(&self) -> bool;
 

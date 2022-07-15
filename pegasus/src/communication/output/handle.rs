@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 
 use pegasus_common::buffer::ReadBuffer;
 
-use crate::communication::buffer::ScopeBufferPool;
+use crate::communication::buffer::ScopeBuffer;
 use crate::communication::decorator::{BlockPush, ScopeStreamPush};
 use crate::communication::output::builder::OutputMeta;
 use crate::communication::output::{BlockScope, Producer};
@@ -27,13 +27,13 @@ use crate::data::MicroBatch;
 use crate::data_plane::Push;
 use crate::errors::IOError;
 use crate::graph::Port;
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
 enum BlockEntry<D: Data> {
     Single(D),
-    LastSingle(D, EndOfScope),
+    LastSingle(D, Eos),
     DynIter(Option<D>, Box<dyn Iterator<Item = D> + Send + 'static>),
 }
 
@@ -42,7 +42,7 @@ pub struct OutputHandle<D: Data> {
     pub scope_level: u32,
     pub src: u32,
     output: Producer<D>,
-    buf_pool: ScopeBufferPool<D>,
+    buf_pool: ScopeBuffer<D>,
     block_entries: TidyTagMap<BlockEntry<D>>,
     blocks: VecDeque<BlockScope>,
     seq_emit: TidyTagMap<u64>,
@@ -61,7 +61,7 @@ impl<D: Data> OutputHandle<D> {
             meta.batch_size,
             batch_capacity
         );
-        let buf_pool = ScopeBufferPool::new(meta.batch_size, batch_capacity, scope_level);
+        let buf_pool = ScopeBuffer::new(meta.batch_size, batch_capacity, scope_level);
         let src = crate::worker_id::get_current_worker().index;
         let parent_level = if scope_level == 0 { 0 } else { scope_level - 1 };
         OutputHandle {
@@ -363,7 +363,7 @@ impl<D: Data> OutputHandle<D> {
         }
     }
 
-    fn flush_buffer(&mut self, buffers: &mut ScopeBufferPool<D>) -> IOResult<()> {
+    fn flush_buffer(&mut self, buffers: &mut ScopeBuffer<D>) -> IOResult<()> {
         for (tag, buf) in buffers.buffers() {
             let batch = MicroBatch::new(tag, self.src, buf.into_read_only());
             self.send_batch(batch)?;
@@ -371,7 +371,7 @@ impl<D: Data> OutputHandle<D> {
         self.output.flush()
     }
 
-    fn clean_lost_end_child(&mut self, tag: &Tag, buf_pool: &mut ScopeBufferPool<D>) -> IOResult<()> {
+    fn clean_lost_end_child(&mut self, tag: &Tag, buf_pool: &mut ScopeBuffer<D>) -> IOResult<()> {
         trace_worker!("clean buffer child of {:?}", tag);
         for (tag, buf) in buf_pool.child_buffers_of(tag, true) {
             if !buf.is_empty() {
@@ -435,7 +435,7 @@ impl<'a, D: Data> OutputSession<'a, D> {
         }
     }
 
-    pub fn give_last(&mut self, msg: D, end: EndOfScope) -> IOResult<()> {
+    pub fn give_last(&mut self, msg: D, end: Eos) -> IOResult<()> {
         if self.skip {
             self.output.notify_end(end)
         } else {
@@ -455,7 +455,7 @@ impl<'a, D: Data> OutputSession<'a, D> {
         }
     }
 
-    pub fn notify_end(&mut self, end: EndOfScope) -> IOResult<()> {
+    pub fn notify_end(&mut self, end: Eos) -> IOResult<()> {
         assert_eq!(self.tag, end.tag);
         self.output.notify_end(end)
     }
@@ -491,7 +491,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
         }
     }
 
-    fn push_last(&mut self, msg: D, end: EndOfScope) -> IOResult<()> {
+    fn push_last(&mut self, msg: D, end: Eos) -> IOResult<()> {
         match self.buf_pool.push_last(&end.tag, msg) {
             Ok(Some(buf)) => {
                 let mut batch = MicroBatch::new(end.tag.clone(), self.src, buf);
@@ -519,7 +519,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
         unimplemented!("use push iter;");
     }
 
-    fn notify_end(&mut self, end: EndOfScope) -> IOResult<()> {
+    fn notify_end(&mut self, end: Eos) -> IOResult<()> {
         let level = end.tag.len() as u32;
         if level == self.scope_level {
             let mut batch = if let Some(buf) = self.buf_pool.take_last_buf(&end.tag) {
@@ -531,7 +531,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
                 "output[{:?}] send end of scope{:?} peers: {:?}",
                 self.port,
                 batch.tag,
-                end.peers()
+                end.parent_peers()
             );
             batch.set_end(end);
             self.send_batch(batch)
@@ -540,7 +540,7 @@ impl<D: Data> ScopeStreamPush<D> for OutputHandle<D> {
                 "output[{:?}] send end of scope{:?} peers: {:?}",
                 self.port,
                 end.tag,
-                end.peers()
+                end.parent_peers()
             );
             let mut buf_pool = std::mem::replace(&mut self.buf_pool, Default::default());
             let result = self.clean_lost_end_child(&end.tag, &mut buf_pool);

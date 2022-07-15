@@ -23,7 +23,7 @@ use crate::data_plane::intra_thread::ThreadPush;
 use crate::data_plane::Push;
 use crate::errors::IOError;
 use crate::graph::Port;
-use crate::progress::EndOfScope;
+use crate::progress::Eos;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 pub mod aggregate;
@@ -34,9 +34,9 @@ pub mod exchange;
 pub trait ScopeStreamPush<T: Data> {
     fn port(&self) -> Port;
 
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<()>;
+    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Option<T>>;
 
-    fn push_last(&mut self, msg: T, end: EndOfScope) -> IOResult<()>;
+    fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()>;
 
     fn try_push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<()> {
         for x in iter {
@@ -45,7 +45,7 @@ pub trait ScopeStreamPush<T: Data> {
         Ok(())
     }
 
-    fn notify_end(&mut self, end: EndOfScope) -> IOResult<()>;
+    fn notify_end(&mut self, end: Eos) -> IOResult<()>;
 
     fn flush(&mut self) -> IOResult<()>;
 

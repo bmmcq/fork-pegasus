@@ -44,8 +44,8 @@ impl<D: Data> BroadcastBatchPush<D> {
                     self.pushes[target].push(batch)?;
                 }
                 self.pushes[target].sync_end(end, DynPeers::all())?;
-            } else if end.peers_contains(self.src) {
-                if end.peers().value() == 1 {
+            } else if end.has_parent(self.src) {
+                if end.parent_peers().len() == 1 {
                     end.update_peers(DynPeers::all());
                     batch.set_end(end);
                     self.pushes[target].push(batch)?;
