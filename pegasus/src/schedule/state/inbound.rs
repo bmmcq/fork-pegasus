@@ -1,8 +1,8 @@
 use crate::communication::IOResult;
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPush, Push};
+use crate::data_plane::{DataPlanePush, Push};
 use crate::graph::Port;
-use crate::progress::{DynPeers, Eos, EndSyncSignal};
+use crate::progress::{DynPeers, EndSyncSignal, Eos};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
@@ -63,7 +63,7 @@ pub trait EndNotify: Send + 'static {
     fn close_notify(&mut self);
 }
 
-impl<T: Data> EndNotify for GeneralPush<MicroBatch<T>> {
+impl<T: Data> EndNotify for DataPlanePush<MicroBatch<T>> {
     fn notify(&mut self, end: Eos) -> IOResult<()> {
         let last = MicroBatch::last(0, end);
         if last.tag().is_root() {

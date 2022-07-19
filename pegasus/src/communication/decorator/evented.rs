@@ -15,10 +15,10 @@
 use crate::channel_id::ChannelInfo;
 use crate::communication::IOResult;
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPush, Push};
+use crate::data_plane::{DataPlanePush, Push};
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
-use crate::progress::{DynPeers, Eos, EndSyncSignal};
+use crate::progress::{DynPeers, EndSyncSignal, Eos};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
 
@@ -27,7 +27,7 @@ pub struct EventEmitPush<T> {
     pub ch_info: ChannelInfo,
     pub source_worker: u32,
     pub target_worker: u32,
-    inner: GeneralPush<MicroBatch<T>>,
+    inner: DataPlanePush<MicroBatch<T>>,
     event_emitter: EventEmitter,
     // scope -> (sequence, counts)
     push_monitor: TidyTagMap<(usize, usize, usize)>,
@@ -36,7 +36,7 @@ pub struct EventEmitPush<T> {
 #[allow(dead_code)]
 impl<T> EventEmitPush<T> {
     pub fn new(
-        info: ChannelInfo, source_worker: u32, target_worker: u32, push: GeneralPush<MicroBatch<T>>,
+        info: ChannelInfo, source_worker: u32, target_worker: u32, push: DataPlanePush<MicroBatch<T>>,
         emitter: EventEmitter,
     ) -> Self {
         let push_counts = TidyTagMap::new(info.scope_level);

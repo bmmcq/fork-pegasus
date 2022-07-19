@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::communication::cancel::AbortNotify;
-use crate::communication::output::OutputAbortNotify;
+use crate::communication::abort::AbortHandle;
 use crate::communication::IOResult;
 use crate::event::{Event, EventKind};
 use crate::graph::Port;

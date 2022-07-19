@@ -40,7 +40,7 @@ impl PartialEq for PeerSet {
                     false
                 }
             }
-            (PeerSet::Range(l, r), PeerSet::One(b)) => *r == *b + 1 && *l== b,
+            (PeerSet::Range(l, r), PeerSet::One(b)) => *r == *b + 1 && *l == b,
             (PeerSet::Range(l, r), PeerSet::Partial(b)) => {
                 if b.len() as u32 == (*r - *l) {
                     for i in 0..*a {
@@ -99,7 +99,7 @@ impl PeerSet {
                     set.insert(index);
                     *self = PeerSet::Partial(set);
                 }
-            },
+            }
         }
     }
 
@@ -108,7 +108,7 @@ impl PeerSet {
             PeerSet::Empty => false,
             PeerSet::One(id) => *id == index,
             PeerSet::Partial(set) => set.contains(&index),
-            PeerSet::Range(l, r) => index >= *l && index < *r
+            PeerSet::Range(l, r) => index >= *l && index < *r,
         }
     }
 
@@ -118,7 +118,7 @@ impl PeerSet {
             PeerSet::Empty => 0,
             PeerSet::One(_) => 1,
             PeerSet::Partial(ref set) => set.len(),
-            PeerSet::Range(l, r) => (*r - *l) as usize
+            PeerSet::Range(l, r) => (*r - *l) as usize,
         }
     }
 
@@ -188,7 +188,7 @@ impl PeerSet {
                 for i in *l..*r {
                     set.insert(i);
                 }
-                if set.len() as u32  > (*r - *l) {
+                if set.len() as u32 > (*r - *l) {
                     *self = other;
                 }
             }
@@ -246,7 +246,7 @@ impl Decode for PeerSet {
             Ok(mask: PeerSet::One(x))
         } else if mode == 2 {
             let len = reader.read_u32()? as usize;
-            let mut set =  IntSet::default();
+            let mut set = IntSet::default();
             for _ in 0..len {
                 let x = reader.read_u32()?;
                 set.insert(x);
@@ -344,11 +344,11 @@ mod test {
         assert_eq!(PeerSet::One(0), PeerSet::One(0));
         assert_ne!(PeerSet::One(0), PeerSet::One(1));
 
-        let mut set =  IntSet::default();
+        let mut set = IntSet::default();
         set.insert(1);
         assert_eq!(PeerSet::One(1), PeerSet::Partial(set));
 
-        let mut set =  IntSet::default();
+        let mut set = IntSet::default();
         set.insert(1);
         set.insert(2);
         assert_ne!(PeerSet::One(1), PeerSet::Partial(set));
@@ -356,28 +356,28 @@ mod test {
         assert_eq!(PeerSet::One(0), PeerSet::Range(0, 1));
         assert_ne!(PeerSet::One(1), PeerSet::Range(0, 1));
 
-        let mut set =  IntSet::default();
+        let mut set = IntSet::default();
         set.insert(1);
         assert_eq!(PeerSet::Partial(set), PeerSet::One(1));
 
-        let mut set1 =  IntSet::default();
+        let mut set1 = IntSet::default();
         set1.insert(0);
         set1.insert(1);
-        let mut set2 =  IntSet::default();
+        let mut set2 = IntSet::default();
         set2.insert(0);
         set2.insert(1);
         assert_eq!(PeerSet::Partial(set1), PeerSet::Partial(set2));
 
-        let mut set =  IntSet::default();
+        let mut set = IntSet::default();
         set.insert(0);
         set.insert(1);
         set.insert(2);
         assert_eq!(PeerSet::Partial(set), PeerSet::Range(0, 3));
 
-        let mut set1 =  IntSet::default();
+        let mut set1 = IntSet::default();
         set1.insert(0);
         set1.insert(1);
-        let mut set2 =  IntSet::default();
+        let mut set2 = IntSet::default();
         set2.insert(0);
         set2.insert(1);
         set2.insert(2);
@@ -385,7 +385,7 @@ mod test {
 
         assert_eq!(PeerSet::Range(0, 1), PeerSet::One(0));
         assert_eq!(PeerSet::Range(0, 3), PeerSet::Range(0, 3));
-        let mut set =  IntSet::default();
+        let mut set = IntSet::default();
         set.insert(0);
         set.insert(1);
         set.insert(2);

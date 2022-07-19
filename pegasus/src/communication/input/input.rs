@@ -25,7 +25,7 @@ use pegasus_common::downcast::*;
 use crate::channel_id::ChannelInfo;
 use crate::communication::input::{InputProxy, InputSession};
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPull, Pull};
+use crate::data_plane::{DataPlanePull, Pull};
 use crate::errors::IOResult;
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
@@ -46,7 +46,7 @@ impl Drop for InputBlockGuard {
 
 pub struct InputHandle<D: Data> {
     pub ch_info: ChannelInfo,
-    pull: GeneralPull<MicroBatch<D>>,
+    pull: DataPlanePull<MicroBatch<D>>,
     stash_index: TidyTagMap<StashedQueue<D>>,
     current_end: VecDeque<Eos>,
     parent_ends: VecDeque<Eos>,
@@ -59,7 +59,7 @@ pub struct InputHandle<D: Data> {
 
 impl<D: Data> InputHandle<D> {
     pub fn new(
-        ch_info: ChannelInfo, pull: GeneralPull<MicroBatch<D>>, event_emitter: EventEmitter,
+        ch_info: ChannelInfo, pull: DataPlanePull<MicroBatch<D>>, event_emitter: EventEmitter,
     ) -> Self {
         let scope_level = ch_info.scope_level;
         InputHandle {

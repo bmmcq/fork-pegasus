@@ -17,7 +17,7 @@ use pegasus_common::downcast::*;
 
 use crate::channel_id::ChannelInfo;
 use crate::data::MicroBatch;
-use crate::data_plane::GeneralPull;
+use crate::data_plane::DataPlanePull;
 use crate::errors::IOResult;
 use crate::event::emitter::EventEmitter;
 use crate::progress::Eos;
@@ -45,7 +45,7 @@ pub use session::InputSession;
 
 #[inline]
 pub(crate) fn new_input<D: Data>(
-    ch_info: ChannelInfo, pull: GeneralPull<MicroBatch<D>>, event_emitter: &EventEmitter,
+    ch_info: ChannelInfo, pull: DataPlanePull<MicroBatch<D>>, event_emitter: &EventEmitter,
 ) -> Box<dyn InputProxy> {
     let input = InputHandle::new(ch_info, pull, event_emitter.clone());
     Box::new(RefWrapInput::wrap(input)) as Box<dyn InputProxy>

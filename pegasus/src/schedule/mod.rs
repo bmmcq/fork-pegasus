@@ -16,7 +16,7 @@
 use std::time::Instant;
 
 use crate::communication::output::OutputAbortNotify;
-use crate::data_plane::GeneralPull;
+use crate::data_plane::DataPlanePull;
 use crate::dataflow::Dataflow;
 use crate::errors::{IOResult, JobExecError};
 use crate::event::emitter::{EventCollector, EventEmitter};
@@ -41,7 +41,7 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    pub fn new(event_emitter: EventEmitter, event_pull: GeneralPull<Event>) -> Self {
+    pub fn new(event_emitter: EventEmitter, event_pull: DataPlanePull<Event>) -> Self {
         let event_collector = EventCollector::new(event_pull);
         Schedule {
             step_count: 0,

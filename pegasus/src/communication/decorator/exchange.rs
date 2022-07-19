@@ -19,8 +19,8 @@ use pegasus_common::buffer::ReadBuffer;
 
 use crate::api::function::{BatchRouteFunction, FnResult, RouteFunction};
 use crate::channel_id::ChannelInfo;
+use crate::communication::abort::{CancelHandle, MultiConsCancelPtr, SingleConsCancel};
 use crate::communication::buffer::ScopeBuffer;
-use crate::communication::cancel::{CancelHandle, MultiConsCancelPtr, SingleConsCancel};
 use crate::communication::channel::BatchRoute;
 use crate::communication::decorator::evented::EventEmitPush;
 use crate::communication::decorator::BlockPush;
@@ -318,7 +318,7 @@ impl<D: Data> Push<MicroBatch<D>> for ExchangeByDataPush<D> {
                     //             as u32;
                     //     };
                     //     if self.src == owner {
-                    //         for p in self.pushes.iter_mut() {
+                    //         for p in self.batched.iter_mut() {
                     //             let mut new_end = end.clone();
                     //             new_end.total_send = 0;
                     //             new_end.global_total_send = 0;

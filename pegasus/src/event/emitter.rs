@@ -4,17 +4,17 @@ use std::collections::VecDeque;
 use pegasus_common::rc::RcPointer;
 
 use crate::communication::IOResult;
-use crate::data_plane::{GeneralPull, GeneralPush, Pull, Push};
+use crate::data_plane::{DataPlanePull, DataPlanePush, Pull, Push};
 use crate::errors::IOError;
 use crate::event::Event;
 
 #[derive(Clone)]
 pub struct EventEmitter {
-    tx: RcPointer<RefCell<Vec<GeneralPush<Event>>>>,
+    tx: RcPointer<RefCell<Vec<DataPlanePush<Event>>>>,
 }
 
 impl EventEmitter {
-    pub fn new(tx: Vec<GeneralPush<Event>>) -> Self {
+    pub fn new(tx: Vec<DataPlanePush<Event>>) -> Self {
         EventEmitter { tx: RcPointer::new(RefCell::new(tx)) }
     }
 
@@ -57,12 +57,12 @@ impl EventEmitter {
 }
 
 pub struct EventCollector {
-    rx: GeneralPull<Event>,
+    rx: DataPlanePull<Event>,
     received: VecDeque<Event>,
 }
 
 impl EventCollector {
-    pub fn new(rx: GeneralPull<Event>) -> Self {
+    pub fn new(rx: DataPlanePull<Event>) -> Self {
         EventCollector { rx, received: VecDeque::new() }
     }
 }

@@ -25,7 +25,7 @@ use crate::channel_id::ChannelInfo;
 use crate::communication::input::{new_input, InputProxy};
 use crate::communication::output::{OutputAbortNotify, OutputBuilder, OutputBuilderImpl, OutputProxy};
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPull, GeneralPush};
+use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::errors::{IOResult, JobExecError};
 use crate::event::emitter::EventEmitter;
 use crate::graph::Port;
@@ -422,8 +422,8 @@ impl OperatorBuilder {
     }
 
     pub(crate) fn add_input<T: Data>(
-        &mut self, ch_info: ChannelInfo, pull: GeneralPull<MicroBatch<T>>,
-        notify: Option<GeneralPush<MicroBatch<T>>>, event_emitter: &EventEmitter,
+        &mut self, ch_info: ChannelInfo, pull: DataPlanePull<MicroBatch<T>>,
+        notify: Option<DataPlanePush<MicroBatch<T>>>, event_emitter: &EventEmitter,
     ) {
         assert_eq!(ch_info.target_port.port, self.inputs.len());
         let input = new_input(ch_info, pull, event_emitter);

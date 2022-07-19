@@ -18,27 +18,59 @@ use std::fmt::Debug;
 use pegasus_common::buffer::{Buffer, ReadBuffer};
 use pegasus_common::codec::{Decode, Encode};
 use pegasus_common::io::{ReadExt, WriteExt};
-use crate::data::batching::{RoBatch, WoBatch};
 
+use crate::data::batching::{RoBatch, WoBatch};
 use crate::progress::Eos;
 use crate::tag::Tag;
 
 pub trait Data: Clone + Send + Sync + Debug + Encode + Decode + 'static {}
 impl<T: Clone + Send + Sync + Debug + Encode + Decode + 'static> Data for T {}
 
+
+pub struct Item<T> {
+    pub tag: Tag,
+    data: Option<T>,
+    eos: Option<Eos>
+}
+
+impl <T> Item<T> {
+    pub fn data(tag: Tag, item: T) -> Self {
+        Self {
+            tag,
+            data: Some(item),
+            eos: None,
+        }
+    }
+
+    pub fn take_data(&mut self) -> Option<T> {
+        self.data.take()
+    }
+}
+
+pub struct Package<T> {
+    pub src: u32,
+    data: RoBatch<Item<T>>,
+}
+
+impl <T> Package<T> {
+    pub fn new(src: u32, data: RoBatch<Item<T>>) -> Self {
+        Self {
+            src,
+            data
+        }
+    }
+}
+
+
 pub struct MicroBatch<T> {
     /// the tag of scope this data set belongs to;
     pub tag: Tag,
     /// the index of worker who created this dataset;
     pub src: u32,
-    /// sequence of the data batch;
-    seq: u64,
     /// if this is the last batch of a scope;
     end: Option<Eos>,
     /// read only data details;
     data: RoBatch<T>,
-
-    is_discarded: bool,
 }
 
 #[allow(dead_code)]
@@ -47,26 +79,22 @@ impl<D> MicroBatch<D> {
     pub fn empty() -> Self {
         MicroBatch {
             tag: Tag::Root,
-            seq: 0,
             src: 0,
             end: None,
             data: RoBatch::default(),
-            is_discarded: false,
         }
     }
 
     pub fn new(tag: Tag, src: u32, data: RoBatch<D>) -> Self {
-        MicroBatch { tag, src, seq: 0, end: None, data, is_discarded: false }
+        MicroBatch { tag, src, end: None, data }
     }
 
     pub fn last(src: u32, end: Eos) -> Self {
         MicroBatch {
             tag: end.tag.clone(),
             src,
-            seq: 0,
             end: Some(end),
             data: RoBatch::default(),
-            is_discarded: false,
         }
     }
 
@@ -85,24 +113,8 @@ impl<D> MicroBatch<D> {
         self.seq = seq;
     }
 
-    pub fn get_seq(&self) -> u64 {
-        self.seq
-    }
-
-    pub fn is_last(&self) -> bool {
-        self.end.is_some()
-    }
-
-    pub fn get_end(&self) -> Option<&Eos> {
-        self.end.as_ref()
-    }
-
     pub fn get_end_mut(&mut self) -> Option<&mut Eos> {
         self.end.as_mut()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
     }
 
     pub fn take_end(&mut self) -> Option<Eos> {
@@ -117,33 +129,29 @@ impl<D> MicroBatch<D> {
         self.take_data();
     }
 
-    pub fn share(&mut self) -> Self {
-        let shared = self.data.make_share();
-        MicroBatch {
-            tag: self.tag.clone(),
-            src: self.src,
-            seq: self.seq,
-            end: self.end.clone(),
-            data: shared,
-            is_discarded: false,
-        }
+    pub fn get_seq(&self) -> u64 {
+        self.seq
+    }
+
+    pub fn is_last(&self) -> bool {
+        self.end.is_some()
+    }
+
+    pub fn get_end(&self) -> Option<&Eos> {
+        self.end.as_ref()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 
     #[inline]
     pub fn tag(&self) -> &Tag {
         &self.tag
     }
-
-    pub fn discard(&mut self) {
-        self.is_discarded = true;
-    }
-
-    pub(crate) fn is_discarded(&self) -> bool {
-        self.is_discarded
-    }
 }
 
-impl<D: Clone> MicroBatch<D> {
+impl<D> MicroBatch<D> {
     #[inline]
     pub fn drain(&mut self) -> impl Iterator<Item = D> + '_ {
         &mut self.data
@@ -170,15 +178,13 @@ impl<D> std::ops::DerefMut for MicroBatch<D> {
     }
 }
 
-impl<D: Data> Clone for MicroBatch<D> {
+impl<D: Clone> Clone for MicroBatch<D> {
     fn clone(&self) -> Self {
         MicroBatch {
             tag: self.tag.clone(),
-            seq: self.seq,
             src: self.src,
             end: self.end.clone(),
             data: self.data.clone(),
-            is_discarded: false,
         }
     }
 }
@@ -186,7 +192,6 @@ impl<D: Data> Clone for MicroBatch<D> {
 impl<D: Data> Encode for MicroBatch<D> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         self.tag.write_to(writer)?;
-        writer.write_u64(self.seq)?;
         writer.write_u32(self.src)?;
         let len = self.data.len() as u64;
         writer.write_u64(len)?;
@@ -201,7 +206,6 @@ impl<D: Data> Encode for MicroBatch<D> {
 impl<D: Data> Decode for MicroBatch<D> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let tag = Tag::read_from(reader)?;
-        let seq = reader.read_u64()?;
         let src = reader.read_u32()?;
         let len = reader.read_u64()? as usize;
         let mut buf = WoBatch::new(len);
@@ -210,7 +214,7 @@ impl<D: Data> Decode for MicroBatch<D> {
         }
         let data = buf.finalize();
         let end = Option::<Eos>::read_from(reader)?;
-        Ok(MicroBatch { tag, src, seq, end, data, is_discarded: false })
+        Ok(MicroBatch { tag, src,  end, data })
     }
 }
 

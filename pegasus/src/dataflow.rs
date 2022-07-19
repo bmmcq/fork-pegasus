@@ -24,7 +24,7 @@ use crate::api::meta::OperatorInfo;
 use crate::channel_id::ChannelInfo;
 use crate::communication::output::OutputBuilderImpl;
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPull, GeneralPush};
+use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::errors::{BuildJobError, IOResult, JobExecError};
 use crate::event::emitter::EventEmitter;
 use crate::graph::{Dependency, DotGraph, Edge, Port};
@@ -212,8 +212,8 @@ impl OperatorRef {
     }
 
     pub fn add_input<T: Data>(
-        &self, ch_info: ChannelInfo, pull: GeneralPull<MicroBatch<T>>,
-        notify: Option<GeneralPush<MicroBatch<T>>>, event_emitter: &EventEmitter,
+        &self, ch_info: ChannelInfo, pull: DataPlanePull<MicroBatch<T>>,
+        notify: Option<DataPlanePush<MicroBatch<T>>>, event_emitter: &EventEmitter,
     ) {
         let mut b = self.borrow.borrow_mut();
         b[self.index - 1].add_input(ch_info, pull, notify, event_emitter)

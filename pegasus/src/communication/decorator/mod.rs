@@ -31,27 +31,6 @@ pub mod broadcast;
 pub mod evented;
 pub mod exchange;
 
-pub trait ScopeStreamPush<T: Data> {
-    fn port(&self) -> Port;
-
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Option<T>>;
-
-    fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()>;
-
-    fn try_push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<()> {
-        for x in iter {
-            self.push(tag, x)?;
-        }
-        Ok(())
-    }
-
-    fn notify_end(&mut self, end: Eos) -> IOResult<()>;
-
-    fn flush(&mut self) -> IOResult<()>;
-
-    fn close(&mut self) -> IOResult<()>;
-}
-
 pub trait BlockPush {
     // try to unblock data on scope, return true if the data is unblocked;
     fn try_unblock(&mut self, tag: &Tag) -> IOResult<bool>;

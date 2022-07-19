@@ -1,30 +1,31 @@
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
+
 use ahash::AHashMap;
 
+use crate::data::batching::{BatchPool, RoBatch, WoBatch};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{Data, Tag};
-use crate::data::batching::{BatchPool, RoBatch, WoBatch};
 
 pub struct WouldBlock;
 
-pub(crate) struct Buffer<D> {
+pub(crate) struct BoundedBuffer<D> {
     exhaust: bool,
     buffer: Option<WoBatch<D>>,
     pool: BatchPool<D>,
 }
 
-impl<D> Buffer<D> {
+impl<D> BoundedBuffer<D> {
     pub(crate) fn new(batch_size: usize, batch_capacity: usize) -> Self {
         let pool = BatchPool::new(batch_size, batch_capacity);
-        Buffer { exhaust: false, buffer: None, pool }
+        BoundedBuffer { exhaust: false, buffer: None, pool }
     }
 
     pub(crate) fn add(&mut self, entry: D) -> Result<Option<RoBatch<D>>, D> {
         assert!(!self.exhaust, "still push after set exhaust");
 
         if self.buffer.is_none() {
-            if let Some(mut buf) = self.pool.fetch_buf() {
+            if let Some(mut buf) = self.pool.fetch() {
                 self.buffer = Some(buf);
             } else {
                 return Err(entry);
@@ -49,14 +50,19 @@ impl<D> Buffer<D> {
         let mut buf = if let Some(buf) = self.buffer.take() {
             buf
         } else {
-           self.pool.fetch().unwrap_or_else(|| WoBatch::new(1))
+            self.pool
+                .fetch()
+                .unwrap_or_else(|| WoBatch::new(1))
         };
         buf.push(entry).expect("unexpected full;");
         buf.finalize()
     }
 
-    pub(crate) fn drain_to<T>(&mut self, iter: &mut T, target: &mut Vec<RoBatch<D>>) -> Result<(), WouldBlock>
-        where T: Iterator<Item = D>
+    pub(crate) fn drain_to<T>(
+        &mut self, iter: &mut T, target: &mut Vec<RoBatch<D>>,
+    ) -> Result<(), WouldBlock>
+    where
+        T: Iterator<Item = D>,
     {
         if self.buffer.is_none() {
             if let Some(mut buf) = self.fetch_buf() {
@@ -70,7 +76,7 @@ impl<D> Buffer<D> {
             while let Some(next) = iter.next() {
                 buf.push(next).expect("");
                 if buf.is_full() {
-                    if let Some(new_buf) = self.fetch_buf() {
+                    if let Some(new_buf) = self.pool.fetch() {
                         let full = std::mem::replace(&mut buf, new_buf);
                         target.push(full.finalize());
                     } else {
@@ -85,7 +91,6 @@ impl<D> Buffer<D> {
             unreachable!("buffer is checked not none;")
         }
     }
-
 
     pub(crate) fn exhaust(&mut self) -> Option<RoBatch<D>> {
         self.exhaust = true;
@@ -115,12 +120,11 @@ impl<D> Buffer<D> {
 }
 
 pub(crate) struct BufferPtr<D> {
-    ptr: NonNull<Buffer<D>>,
+    ptr: NonNull<BoundedBuffer<D>>,
 }
 
 impl<D> BufferPtr<D> {
-    fn new(slot: Buffer<D>) -> Self {
-
+    fn new(slot: BoundedBuffer<D>) -> Self {
         let ptr = Box::new(slot);
         let ptr = unsafe { NonNull::new_unchecked(Box::into_raw(ptr)) };
         BufferPtr { ptr }
@@ -141,7 +145,7 @@ impl<D> Clone for BufferPtr<D> {
 }
 
 impl<D> Deref for BufferPtr<D> {
-    type Target = Buffer<D>;
+    type Target = BoundedBuffer<D>;
 
     fn deref(&self) -> &Self::Target {
         unsafe { self.ptr.as_ref() }
@@ -158,19 +162,14 @@ pub struct ScopeBuffer<D> {
     batch_size: usize,
     batch_capacity: usize,
     max_scope_buffer_size: usize,
-    scope_buffers: AHashMap<Tag, BufferPtr<D>>
+    scope_buffers: AHashMap<Tag, BufferPtr<D>>,
 }
 
 unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
     pub(crate) fn new(batch_size: usize, batch_capacity: usize, max_scope_buffer_size: usize) -> Self {
-        ScopeBuffer {
-            batch_size,
-            batch_capacity,
-            max_scope_buffer_size,
-            scope_buffers: AHashMap::new(),
-        }
+        ScopeBuffer { batch_size, batch_capacity, max_scope_buffer_size, scope_buffers: AHashMap::new() }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {
@@ -199,14 +198,17 @@ impl<D> ScopeBuffer<D> {
                 }
 
                 if let Some(f) = find {
-                    let mut slot = self.scope_buffers.remove(&f).expect("find lost");
+                    let mut slot = self
+                        .scope_buffers
+                        .remove(&f)
+                        .expect("find lost");
                     // trace_worker!("reuse idle buffer slot for scope {:?};", tag);
                     slot.reuse();
                     assert!(slot.buffer.is_none());
                     let ptr = slot.clone();
                     self.scope_buffers.insert(tag.clone(), slot);
                     Some(ptr)
-                } else if self.scope_buffers.len() < self.max_scope_buffer_size  {
+                } else if self.scope_buffers.len() < self.max_scope_buffer_size {
                     Some(self.create_new_buffer_slot(tag))
                 } else {
                     None
@@ -220,7 +222,7 @@ impl<D> ScopeBuffer<D> {
     }
 
     fn create_new_buffer_slot(&mut self, tag: &Tag) -> BufferPtr<D> {
-        let slot = BufferPtr::new(Buffer::new(self.batch_size,self.batch_capacity));
+        let slot = BufferPtr::new(BoundedBuffer::new(self.batch_size, self.batch_capacity));
         let ptr = slot.clone();
         self.scope_buffers.insert(tag.clone(), slot);
         ptr
@@ -229,7 +231,12 @@ impl<D> ScopeBuffer<D> {
 
 impl<D> Default for ScopeBuffer<D> {
     fn default() -> Self {
-        ScopeBuffer { batch_size: 1, batch_capacity: 1, max_scope_buffer_size: 0, scope_buffers: Default::default() }
+        ScopeBuffer {
+            batch_size: 1,
+            batch_capacity: 1,
+            max_scope_buffer_size: 0,
+            scope_buffers: Default::default(),
+        }
     }
 }
 

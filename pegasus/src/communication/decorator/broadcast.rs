@@ -1,5 +1,5 @@
 use crate::channel_id::ChannelInfo;
-use crate::communication::cancel::{CancelHandle, MultiConsCancelPtr};
+use crate::communication::abort::{CancelHandle, MultiConsCancelPtr};
 use crate::communication::decorator::evented::EventEmitPush;
 use crate::data::MicroBatch;
 use crate::data_plane::Push;

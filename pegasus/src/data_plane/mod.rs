@@ -96,24 +96,24 @@ use intra_thread::{ThreadPull, ThreadPush};
 use crate::config::JobServerConf;
 
 #[enum_dispatch(Push<T>)]
-pub enum GeneralPush<T: Data> {
+pub enum DataPlanePush<T: Data> {
     IntraThread(ThreadPush<T>),
     IntraProcess(IntraProcessPush<T>),
     InterProcesses(RemotePush<T>),
 }
 
-impl<T: Data> GeneralPush<T> {
+impl<T: Data> DataPlanePush<T> {
     #[inline]
     pub fn is_local(&self) -> bool {
         match self {
-            GeneralPush::InterProcesses(_) => false,
+            DataPlanePush::InterProcesses(_) => false,
             _ => true,
         }
     }
 }
 
 #[enum_dispatch(Pull<T>)]
-pub enum GeneralPull<T: Data> {
+pub enum DataPlanePull<T: Data> {
     IntraThread(ThreadPull<T>),
     IntraProcess(IntraProcessPull<T>),
     InterProcesses(CombinationPull<T>),
@@ -125,12 +125,12 @@ pub(crate) fn pipeline<T: Data>(id: ChannelId) -> (ThreadPush<T>, ThreadPull<T>)
 
 pub struct ChannelResource<T: Data> {
     pub ch_id: ChannelId,
-    pushes: Vec<GeneralPush<T>>,
-    pull: GeneralPull<T>,
+    pushes: Vec<DataPlanePush<T>>,
+    pull: DataPlanePull<T>,
 }
 
 impl<T: Data> ChannelResource<T> {
-    pub fn take(self) -> (Vec<GeneralPush<T>>, GeneralPull<T>) {
+    pub fn take(self) -> (Vec<DataPlanePush<T>>, DataPlanePull<T>) {
         (self.pushes, self.pull)
     }
 }
@@ -158,13 +158,13 @@ pub fn build_local_channels<T: Data>(id: ChannelId, workers: usize) -> LinkedLis
 
     for (_, recv) in ch_rxs.into_iter().enumerate() {
         let (tx, rx) = intra_thread::pipeline::<T>(id);
-        let mut pushes = Vec::<GeneralPush<T>>::with_capacity(workers);
+        let mut pushes = Vec::<DataPlanePush<T>>::with_capacity(workers);
         for j in 0..workers {
             let p = IntraProcessPush::<T>::new(id, ch_txs[j].clone());
             pushes.push(p.into());
         }
         pushes.push(tx.into());
-        // let mut send = std::mem::replace(&mut pushes[i], tx.into());
+        // let mut send = std::mem::replace(&mut batched[i], tx.into());
         // send.close().ok();
         let pull = IntraProcessPull::<T>::new(id, rx, recv).into();
         let ch = ChannelResource { ch_id: id, pushes, pull };
@@ -205,7 +205,7 @@ pub fn build_channels<T: Data>(
         }
 
         for recv in ch_rxs.into_iter() {
-            let mut pushes = Vec::<GeneralPush<T>>::with_capacity(workers + 1);
+            let mut pushes = Vec::<DataPlanePush<T>>::with_capacity(workers + 1);
             for j in 0..workers {
                 let p = IntraProcessPush::<T>::new(id, ch_txs[j].clone());
                 pushes.push(p.into());

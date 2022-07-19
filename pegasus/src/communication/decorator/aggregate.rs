@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::api::function::{BatchRouteFunction, FnResult};
 use crate::channel_id::ChannelInfo;
-use crate::communication::cancel::{CancelHandle, DynSingleConsCancelPtr};
+use crate::communication::abort::{CancelHandle, DynSingleConsCancelPtr};
 use crate::communication::channel::BatchRoute;
 use crate::communication::decorator::evented::EventEmitPush;
 use crate::communication::decorator::exchange::ExchangeByBatchPush;

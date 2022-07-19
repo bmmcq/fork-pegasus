@@ -21,8 +21,9 @@ use crate::data_plane::ChannelResource;
 use crate::errors::{BuildJobError, IOError};
 use crate::{Data, JobConf};
 
+pub(crate) mod abort;
+mod block;
 mod buffer;
-pub(crate) mod cancel;
 pub(crate) mod channel;
 pub(crate) mod decorator;
 pub(crate) mod input;

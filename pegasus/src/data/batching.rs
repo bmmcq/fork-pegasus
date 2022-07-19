@@ -1,39 +1,32 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+
 use crate::data::MicroBatch;
 use crate::Tag;
-
 
 pub struct WoBatch<T> {
     data: Box<[Option<T>]>,
     cursor: usize,
-    recycle: Option<Sender<Box<[Option<T>]>>>
+    recycle: Option<Sender<Box<[Option<T>]>>>,
 }
 
 pub struct RoBatch<T> {
     data: Box<[Option<T>]>,
     cursor: usize,
     len: usize,
-    recycle: Option<Sender<Box<[Option<T>]>>>
+    recycle: Option<Sender<Box<[Option<T>]>>>,
 }
 
-impl <T> WoBatch<T> {
+impl<T> WoBatch<T> {
     pub fn new(capacity: usize) -> Self {
         let mut vec = vec![None; capacity];
-        Self {
-            data: vec.into_boxed_slice(),
-            cursor: 0,
-            recycle: None,
-        }
+        Self { data: vec.into_boxed_slice(), cursor: 0, recycle: None }
     }
 
     pub fn from(data: Box<[Option<T>]>) -> Self {
-        Self {
-            data,
-            cursor: 0,
-            recycle: None,
-        }
+        Self { data, cursor: 0, recycle: None }
     }
 
     pub fn push(&mut self, item: T) -> Option<T> {
@@ -63,12 +56,7 @@ impl <T> WoBatch<T> {
     }
 
     pub fn finalize(self) -> RoBatch<T> {
-        RoBatch {
-            data: self.data,
-            cursor: 0,
-            len: self.cursor,
-            recycle: self.recycle
-        }
+        RoBatch { data: self.data, cursor: 0, len: self.cursor, recycle: self.recycle }
     }
 
     fn set_recycle(&mut self, recycle: Sender<Box<[Option<T>]>>) {
@@ -76,8 +64,7 @@ impl <T> WoBatch<T> {
     }
 }
 
-
-impl <T> RoBatch<T> {
+impl<T> RoBatch<T> {
     pub fn pop(&mut self) -> Option<T> {
         if self.cursor == self.len {
             None
@@ -97,7 +84,7 @@ impl <T> RoBatch<T> {
     }
 }
 
-impl <T> Drop for RoBatch<T> {
+impl<T> Drop for RoBatch<T> {
     fn drop(&mut self) {
         if let Some(recycle) = self.recycle.take() {
             if self.data.len() > 0 {
@@ -108,31 +95,21 @@ impl <T> Drop for RoBatch<T> {
     }
 }
 
-impl <T> Default for RoBatch<T> {
+impl<T> Default for RoBatch<T> {
     fn default() -> Self {
-        Self {
-            data: vec![].into_boxed_slice(),
-            cursor: 0,
-            len: 0,
-            recycle: None
-        }
+        Self { data: vec![].into_boxed_slice(), cursor: 0, len: 0, recycle: None }
     }
 }
 
-impl <T: Clone> Clone for RoBatch<T> {
+impl<T: Clone> Clone for RoBatch<T> {
     fn clone(&self) -> Self {
-        let mut vec = vec![None;self.data.len()];
+        let mut vec = vec![None; self.data.len()];
         vec.clone_from_slice(&self.data[..]);
-        Self {
-            data: vec.into_boxed_slice(),
-            cursor: 0,
-            len: self.data.len(),
-            recycle: None
-        }
+        Self { data: vec.into_boxed_slice(), cursor: 0, len: self.data.len(), recycle: None }
     }
 }
 
-impl <T> Iterator for RoBatch<T> {
+impl<T> Iterator for RoBatch<T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -145,19 +122,13 @@ pub struct BatchPool<T> {
     batch_size: usize,
     alloc_guard: usize,
     pool: Receiver<Box<[Option<T>]>>,
-    recycle: Sender<Box<[Option<T>]>>
+    recycle: Sender<Box<[Option<T>]>>,
 }
 
-impl <T> BatchPool<T> {
+impl<T> BatchPool<T> {
     pub fn new(batch_size: usize, capacity: usize) -> Self {
         let (recycle, pool) = crossbeam_channel::unbounded();
-         Self {
-            batch_size,
-            capacity,
-            alloc_guard: 0,
-            pool,
-            recycle
-        }
+        Self { batch_size, capacity, alloc_guard: 0, pool, recycle }
     }
 
     pub fn fetch(&mut self) -> Option<WoBatch<T>> {
@@ -176,7 +147,7 @@ impl <T> BatchPool<T> {
                 } else {
                     None
                 }
-            },
+            }
             Err(TryRecvError::Disconnected) => {
                 panic!("batch pool dropped abnormally");
             }

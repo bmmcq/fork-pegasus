@@ -16,10 +16,12 @@
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::io;
+use std::sync::Weak;
 
 use pegasus_common::channel::RecvError;
 
 use crate::channel_id::ChannelId;
+use crate::Tag;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum IOErrorKind {
@@ -32,9 +34,10 @@ pub enum IOErrorKind {
     // IO error from system's IO derive, like network(tcp..), files,
     SystemIO(io::ErrorKind),
     // block by flow control;
-    WouldBlock,
+    WouldBlock(Option<(Tag, Weak<()>)>),
     // try to block but can't;
     CannotBlock,
+    DataAborted(Tag),
     Unknown,
 }
 
@@ -74,7 +77,7 @@ impl IOError {
     }
 
     pub fn would_block() -> Self {
-        IOError::new(IOErrorKind::WouldBlock)
+        IOError::new(IOErrorKind::WouldBlock(None))
     }
 
     pub fn cannot_block() -> Self {
@@ -98,7 +101,7 @@ impl IOError {
     }
 
     pub fn is_would_block(&self) -> bool {
-        matches!(self.kind, IOErrorKind::WouldBlock)
+        matches!(self.kind, IOErrorKind::WouldBlock(_))
     }
 
     pub fn is_fatal(&self) -> bool {

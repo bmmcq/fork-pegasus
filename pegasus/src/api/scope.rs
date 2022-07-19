@@ -144,12 +144,12 @@ impl ScopeDelta {
 
 #[derive(Default, Copy, Clone)]
 pub struct MergedScopeDelta {
-    pub origin_scope_level: usize,
+    pub origin_scope_level: u8,
     deltas: ScopeDelta,
 }
 
 impl MergedScopeDelta {
-    pub fn new(origin_scope_level: usize) -> Self {
+    pub fn new(origin_scope_level: u8) -> Self {
         MergedScopeDelta { origin_scope_level, deltas: ScopeDelta::None }
     }
 

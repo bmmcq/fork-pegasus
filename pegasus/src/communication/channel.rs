@@ -16,8 +16,8 @@
 use crate::api::function::{BatchRouteFunction, FnResult, RouteFunction};
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
 use crate::channel_id::{ChannelId, ChannelInfo};
+use crate::communication::abort::{CancelHandle, SingleConsCancel};
 use crate::communication::buffer::ScopeBuffer;
-use crate::communication::cancel::{CancelHandle, SingleConsCancel};
 use crate::communication::decorator::aggregate::AggregateBatchPush;
 use crate::communication::decorator::broadcast::BroadcastBatchPush;
 use crate::communication::decorator::evented::EventEmitPush;
@@ -25,7 +25,7 @@ use crate::communication::decorator::exchange::{ExchangeByBatchPush, ExchangeByD
 use crate::communication::decorator::{LocalMicroBatchPush, MicroBatchPush};
 use crate::communication::output::{OutputBuilderImpl, Producer};
 use crate::data::MicroBatch;
-use crate::data_plane::{GeneralPull, GeneralPush};
+use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::dataflow::DataflowBuilder;
 use crate::graph::Port;
 use crate::BuildJobError;
@@ -101,12 +101,12 @@ impl<T: Data> Default for Channel<T> {
 
 pub(crate) struct MaterializedChannel<T: Data> {
     push: Producer<T>,
-    pull: GeneralPull<MicroBatch<T>>,
-    notify: Option<GeneralPush<MicroBatch<T>>>,
+    pull: DataPlanePull<MicroBatch<T>>,
+    notify: Option<DataPlanePush<MicroBatch<T>>>,
 }
 
 impl<T: Data> MaterializedChannel<T> {
-    pub fn take(self) -> (Producer<T>, GeneralPull<MicroBatch<T>>, Option<GeneralPush<MicroBatch<T>>>) {
+    pub fn take(self) -> (Producer<T>, DataPlanePull<MicroBatch<T>>, Option<DataPlanePush<MicroBatch<T>>>) {
         (self.push, self.pull, self.notify)
     }
 }
@@ -174,7 +174,7 @@ impl<T: Data> Channel<T> {
     fn build_remote(
         &self, scope_level: u32, target: Port, id: ChannelId, dfb: &DataflowBuilder,
     ) -> Result<
-        (ChannelInfo, Vec<EventEmitPush<T>>, GeneralPull<MicroBatch<T>>, GeneralPush<MicroBatch<T>>),
+        (ChannelInfo, Vec<EventEmitPush<T>>, DataPlanePull<MicroBatch<T>>, DataPlanePush<MicroBatch<T>>),
         BuildJobError,
     > {
         let (mut raw, pull) = crate::communication::build_channel::<MicroBatch<T>>(id, &dfb.config)?.take();
