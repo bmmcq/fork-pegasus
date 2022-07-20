@@ -1,36 +1,88 @@
-use crate::communication::output::streaming::{Pushed, StreamPush};
-use crate::communication::output::streaming::batching::BufStreamPush;
-use crate::communication::output::streaming::partition::PartitionStreamPush;
+use std::any::Any;
+use std::cell::RefCell;
+use crate::communication::output::handle::{MultiScopeOutputHandle, MultiScopeOutputSession, OutputHandle, OutputSession};
+use crate::communication::output::{Output, OutputInfo};
+use crate::communication::output::unify::EnumStreamPush;
+use crate::{Data, Tag};
+use crate::api::scope::MergedScopeDelta;
 use crate::errors::IOResult;
 use crate::progress::Eos;
-use crate::Tag;
 
-pub enum EnumStreamPush<T> {
-    Exchange(PartitionStreamPush<T, BufStreamPush<T, P>>)
+pub struct OutputProxy<D: Data>(RefCell<OutputHandle<D, EnumStreamPush<D>>>);
+pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, EnumStreamPush<D>>>);
+
+impl <D: Data> OutputProxy<D> {
+
+    pub fn new(info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>) -> Self {
+        let handle = OutputHandle::new(info, delta, output);
+        Self(RefCell::new(handle))
+    }
+
+    pub fn downcast<'a>(output: &'a Box<dyn Any + Output>) -> Option<&'a OutputProxy<D>> {
+        output.downcast_ref::<Self>()
+    }
+
+    pub fn new_session(&self, tag: Tag) -> IOResult<OutputSession<D, EnumStreamPush<D>>> {
+        self.0.borrow_mut().new_session(tag)
+    }
 }
 
-impl<T> StreamPush<T> for EnumStreamPush<T> {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
-        todo!()
+impl<D: Data> Output for OutputProxy<D> {
+    fn info(&self) -> &OutputInfo {
+        self.0.borrow().info()
     }
 
-    fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()> {
-        todo!()
+    fn flush(&self) -> IOResult<()> {
+       self.0.borrow_mut().flush()
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
-        todo!()
+    fn notify_end(&self, end: Eos) -> IOResult<()> {
+        self.0.borrow_mut().notify_end(end)
     }
 
-    fn notify_end(&mut self, end: Eos) -> IOResult<()> {
-        todo!()
+    fn close(&self) -> IOResult<()> {
+        self.0.borrow_mut().close()
     }
 
-    fn flush(&mut self) -> IOResult<()> {
-        todo!()
+    fn is_closed(&self) -> bool {
+        self.0.borrow().is_closed()
+    }
+}
+
+impl <D: Data> MultiScopeOutputProxy<D> {
+
+    pub fn new(info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>) -> Self {
+        let handle = MultiScopeOutputHandle::new(info, delta, output);
+        Self(RefCell::new(handle))
     }
 
-    fn close(&mut self) -> IOResult<()> {
-        todo!()
+    pub fn downcast<'a>(output: &'a Box<dyn Any + Output>) -> Option<&'a MultiScopeOutputProxy<D>> {
+        output.downcast_ref::<Self>()
+    }
+
+    pub fn new_session(&self, tag: Tag) -> IOResult<MultiScopeOutputSession<D, EnumStreamPush<D>>> {
+        self.0.borrow_mut().new_session(tag)
+    }
+}
+
+impl<D: Data> Output for MultiScopeOutputProxy<D> {
+    fn info(&self) -> &OutputInfo {
+        self.0.borrow().info()
+    }
+
+    fn flush(&self) -> IOResult<()> {
+        self.0.borrow_mut().flush()
+    }
+
+    fn notify_end(&self, end: Eos) -> IOResult<()> {
+        self.0.borrow_mut().notify_end(end)
+    }
+
+    fn close(&self) -> IOResult<()> {
+        self.0.borrow_mut().close()
+    }
+
+    fn is_closed(&self) -> bool {
+        self.0.borrow().is_closed()
     }
 }

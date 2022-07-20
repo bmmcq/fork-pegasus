@@ -14,7 +14,7 @@ use crate::data_plane::Push;
 use crate::errors::IOError;
 use crate::graph::Port;
 use crate::progress::Eos;
-use crate::Tag;
+use crate::{Data, Tag};
 
 pub struct PartitionStreamPush<T, P> {
     pub src: u32,
@@ -25,7 +25,11 @@ pub struct PartitionStreamPush<T, P> {
     route: Partitioner<T>,
 }
 
-impl <T, P> Pinnable for PartitionStreamPush<T, P> where P: StreamPush<T> + Pinnable {
+impl<T, P> Pinnable for PartitionStreamPush<T, P>
+where
+    T: Data,
+    P: StreamPush<T> + Pinnable,
+{
     fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
         for p in self.pushes.iter_mut() {
             if !p.pin(tag) {
@@ -45,6 +49,7 @@ impl <T, P> Pinnable for PartitionStreamPush<T, P> where P: StreamPush<T> + Pinn
 
 impl<T, P> StreamPush<T> for PartitionStreamPush<T, P>
 where
+    T: Data,
     P: StreamPush<T> + Countable + Pinnable,
 {
     fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {

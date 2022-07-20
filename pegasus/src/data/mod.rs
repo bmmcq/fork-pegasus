@@ -16,30 +16,26 @@
 use std::fmt::Debug;
 
 use pegasus_common::buffer::{Buffer, ReadBuffer};
-use pegasus_common::codec::{Decode, Encode};
+use pegasus_common::codec::{Codec, Decode, Encode};
 use pegasus_common::io::{ReadExt, WriteExt};
 
 use crate::data::batching::{RoBatch, WoBatch};
 use crate::progress::Eos;
 use crate::tag::Tag;
 
-pub trait Data: Clone + Send + Sync + Debug + Encode + Decode + 'static {}
-impl<T: Clone + Send + Sync + Debug + Encode + Decode + 'static> Data for T {}
+pub trait Data: Send + Debug + Codec + 'static {}
 
+impl<T: Send + Debug + Codec + 'static> Data for T {}
 
 pub struct Item<T> {
     pub tag: Tag,
     data: Option<T>,
-    eos: Option<Eos>
+    eos: Option<Eos>,
 }
 
-impl <T> Item<T> {
+impl<T> Item<T> {
     pub fn data(tag: Tag, item: T) -> Self {
-        Self {
-            tag,
-            data: Some(item),
-            eos: None,
-        }
+        Self { tag, data: Some(item), eos: None }
     }
 
     pub fn take_data(&mut self) -> Option<T> {
@@ -52,21 +48,17 @@ pub struct Package<T> {
     data: RoBatch<Item<T>>,
 }
 
-impl <T> Package<T> {
+impl<T> Package<T> {
     pub fn new(src: u32, data: RoBatch<Item<T>>) -> Self {
-        Self {
-            src,
-            data
-        }
+        Self { src, data }
     }
 }
-
 
 pub struct MicroBatch<T> {
     /// the tag of scope this data set belongs to;
     pub tag: Tag,
     /// the index of worker who created this dataset;
-    pub src: u32,
+    pub src: u16,
     /// if this is the last batch of a scope;
     end: Option<Eos>,
     /// read only data details;
@@ -77,25 +69,11 @@ pub struct MicroBatch<T> {
 impl<D> MicroBatch<D> {
     #[inline]
     pub fn empty() -> Self {
-        MicroBatch {
-            tag: Tag::Root,
-            src: 0,
-            end: None,
-            data: RoBatch::default(),
-        }
+        MicroBatch { tag: Tag::Root, src: 0, end: None, data: RoBatch::default() }
     }
 
-    pub fn new(tag: Tag, src: u32, data: RoBatch<D>) -> Self {
+    pub fn new(tag: Tag, src: u16, data: RoBatch<D>) -> Self {
         MicroBatch { tag, src, end: None, data }
-    }
-
-    pub fn last(src: u32, end: Eos) -> Self {
-        MicroBatch {
-            tag: end.tag.clone(),
-            src,
-            end: Some(end),
-            data: RoBatch::default(),
-        }
     }
 
     pub fn set_end(&mut self, end: Eos) {
@@ -180,19 +158,14 @@ impl<D> std::ops::DerefMut for MicroBatch<D> {
 
 impl<D: Clone> Clone for MicroBatch<D> {
     fn clone(&self) -> Self {
-        MicroBatch {
-            tag: self.tag.clone(),
-            src: self.src,
-            end: self.end.clone(),
-            data: self.data.clone(),
-        }
+        MicroBatch { tag: self.tag.clone(), src: self.src, end: self.end.clone(), data: self.data.clone() }
     }
 }
 
 impl<D: Data> Encode for MicroBatch<D> {
     fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
         self.tag.write_to(writer)?;
-        writer.write_u32(self.src)?;
+        writer.write_u16(self.src)?;
         let len = self.data.len() as u64;
         writer.write_u64(len)?;
         for data in self.data.iter() {
@@ -206,7 +179,7 @@ impl<D: Data> Encode for MicroBatch<D> {
 impl<D: Data> Decode for MicroBatch<D> {
     fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
         let tag = Tag::read_from(reader)?;
-        let src = reader.read_u32()?;
+        let src = reader.read_u16()?;
         let len = reader.read_u64()? as usize;
         let mut buf = WoBatch::new(len);
         for _ in 0..len {
@@ -214,7 +187,7 @@ impl<D: Data> Decode for MicroBatch<D> {
         }
         let data = buf.finalize();
         let end = Option::<Eos>::read_from(reader)?;
-        Ok(MicroBatch { tag, src,  end, data })
+        Ok(MicroBatch { tag, src, end, data })
     }
 }
 

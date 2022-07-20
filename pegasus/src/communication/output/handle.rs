@@ -15,6 +15,7 @@
 
 use std::cell::RefMut;
 use std::collections::VecDeque;
+use std::io::Write;
 
 use ahash::{AHashMap, AHashSet};
 
@@ -48,13 +49,23 @@ pub struct OutputHandle<D, T> {
 
 impl<D, T> OutputHandle<D, T>
 where
+    D: Data,
     T: StreamPush<D>,
 {
     pub fn new(info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
         assert_eq!(info.scope_level, 0);
         let tag = delta.evolve(&Root);
         let worker_id = crate::worker_id::get_current_worker().index;
-        OutputHandle { info, tag, worker_id, is_closed: false, is_aborted: false, scope_delta: delta, blocked: None, output }
+        OutputHandle {
+            info,
+            tag,
+            worker_id,
+            is_closed: false,
+            is_aborted: false,
+            scope_delta: delta,
+            blocked: None,
+            output,
+        }
     }
 
     pub fn new_session(&mut self, tag: Tag) -> IOResult<OutputSession<D, T>> {
@@ -66,14 +77,35 @@ where
         }
     }
 
+    pub fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+        assert_eq!(self.tag, end.tag);
+        assert!(self.blocked.is_none());
+        let tag = self.scope_delta.evolve(&end.tag);
+        end.tag = tag;
+        self.output.notify_end(end)
+    }
+
+    pub fn flush(&mut self) -> IOResult<()> {
+        self.output.flush()
+    }
+
     pub fn close(&mut self) -> IOResult<()> {
         self.is_closed = true;
         self.output.close()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.is_closed
+    }
+
+    pub fn info(&self) -> &OutputInfo {
+        &self.info
     }
 }
 
 impl<D, T> BlockHandle<D> for OutputHandle<D, T>
 where
+    D: Data,
     T: StreamPush<D>,
 {
     fn has_blocks(&self) -> bool {
@@ -126,7 +158,10 @@ where
     }
 }
 
-impl<D, T> AbortHandle for OutputHandle<D, T> where T: AbortHandle {
+impl<D, T> AbortHandle for OutputHandle<D, T>
+where
+    T: AbortHandle,
+{
     fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
         let abort = self.output.abort(tag, worker)?;
         if let Some(block) = self.blocked.take() {
@@ -147,6 +182,7 @@ pub struct OutputSession<'a, D, T> {
 
 impl<'a, D, T> OutputSession<'a, D, T>
 where
+    D: Data,
     T: StreamPush<D>,
 {
     fn new(tag: Tag, output: &'a mut OutputHandle<D, T>) -> IOResult<Self> {
@@ -193,12 +229,11 @@ where
     }
 
     pub fn notify_end(&mut self, end: Eos) -> IOResult<()> {
-        assert_eq!(self.tag, end.tag);
-        self.output.output.notify_end(end)
+        self.output.notify_end(end)
     }
 
     pub fn flush(&mut self) -> IOResult<()> {
-        self.output.output.flush()
+        self.output.flush()
     }
 }
 
@@ -214,11 +249,20 @@ pub struct MultiScopeOutputHandle<D, T> {
 
 impl<D, T> MultiScopeOutputHandle<D, T>
 where
+    D: Data,
     T: StreamPush<D>,
 {
     pub fn new(info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
         let worker_id = crate::worker_id::get_current_worker().index;
-        Self { info, worker_id, is_closed: false, scope_delta: delta, blocks: AHashMap::new(), aborts: AHashSet::new(), output }
+        Self {
+            info,
+            worker_id,
+            is_closed: false,
+            scope_delta: delta,
+            blocks: AHashMap::new(),
+            aborts: AHashSet::new(),
+            output,
+        }
     }
 
     pub fn new_session(&mut self, tag: Tag) -> IOResult<MultiScopeOutputSession<D, T>> {
@@ -229,14 +273,35 @@ where
         }
     }
 
+    pub fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+        let tag = self.scope_delta.evolve(&end.tag);
+        assert!(!self.blocks.contains_key(&tag));
+        self.aborts.remove(&tag);
+        end.tag = tag;
+        self.output.notify_end(end)
+    }
+
+    pub fn flush(&mut self) -> IOResult<()> {
+        self.output.flush()
+    }
+
     pub fn close(&mut self) -> IOResult<()> {
         self.is_closed = true;
         self.output.close()
+    }
+
+    pub fn is_closed(&self) -> bool {
+        self.is_closed
+    }
+
+    pub fn info(&self) -> &OutputInfo {
+        &self.info
     }
 }
 
 impl<D, T> BlockHandle<D> for MultiScopeOutputHandle<D, T>
 where
+    D: Data,
     T: StreamPush<D> + Pinnable,
 {
     fn has_blocks(&self) -> bool {
@@ -302,7 +367,10 @@ where
     }
 }
 
-impl <D, T> AbortHandle for MultiScopeOutputHandle<D, T> where T: AbortHandle {
+impl<D, T> AbortHandle for MultiScopeOutputHandle<D, T>
+where
+    T: AbortHandle,
+{
     fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
         let tag = self.output.abort(tag, worker)?;
         if let Some(_block) = self.blocks.remove(&tag) {
@@ -314,7 +382,7 @@ impl <D, T> AbortHandle for MultiScopeOutputHandle<D, T> where T: AbortHandle {
     }
 }
 
-pub struct MultiScopeOutputSession<'a, D, T: StreamPush<D> + Pinnable + Send + 'static> {
+pub struct MultiScopeOutputSession<'a, D: Data, T: StreamPush<D> + Pinnable + Send + 'static> {
     pub tag: Tag,
     is_blocked: bool,
     output: &'a mut MultiScopeOutputHandle<D, T>,
@@ -322,6 +390,7 @@ pub struct MultiScopeOutputSession<'a, D, T: StreamPush<D> + Pinnable + Send + '
 
 impl<'a, D, T> Drop for MultiScopeOutputSession<'a, D, T>
 where
+    D: Data,
     T: StreamPush<D> + Pinnable + Send + 'static,
 {
     fn drop(&mut self) {
@@ -333,6 +402,7 @@ where
 
 impl<'a, D, T> MultiScopeOutputSession<'a, D, T>
 where
+    D: Data,
     T: StreamPush<D> + Pinnable + Send + 'static,
 {
     fn new(tag: Tag, output: &'a mut MultiScopeOutputHandle<D, T>) -> IOResult<Self> {
@@ -392,11 +462,10 @@ where
     }
 
     pub fn notify_end(&mut self, end: Eos) -> IOResult<()> {
-        assert_eq!(self.tag, end.tag);
-        self.output.output.notify_end(end)
+        self.output.notify_end(end)
     }
 
     pub fn flush(&mut self) -> IOResult<()> {
-        self.output.output.flush()
+        self.output.flush()
     }
 }

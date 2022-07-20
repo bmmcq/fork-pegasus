@@ -22,6 +22,6 @@ impl Rectifier {
     }
 }
 
-mod event;
-mod aggregate;
-mod broadcast;
+pub mod aggregate;
+pub mod broadcast;
+pub mod event;

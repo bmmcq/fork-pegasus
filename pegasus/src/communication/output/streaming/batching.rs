@@ -8,12 +8,12 @@ use crate::data_plane::Push;
 use crate::errors::{IOError, IOResult};
 use crate::graph::Port;
 use crate::progress::Eos;
-use crate::Tag;
+use crate::{Data, Tag};
+use crate::communication::ChannelInfo;
 
 pub struct BufStreamPush<T, P> {
-    ch_index: u32,
-    worker_index: u32,
-    port: Port,
+    ch_info: ChannelInfo,
+    worker_index: u16,
     total_send: usize,
     tag: Tag,
     buffer: BoundedBuffer<T>,
@@ -21,24 +21,24 @@ pub struct BufStreamPush<T, P> {
     inner: P,
 }
 
-impl<T, P> BufStreamPush<T, P> {
+impl<T: Data, P> BufStreamPush<T, P> {
     pub fn new(
-        ch_index: u32, worker_index: u32, port: Port, batch_size: usize, batch_capacity: usize, tag: Tag, push: P,
+        ch_info: ChannelInfo, worker_index: u16, tag: Tag,
+        push: P,
     ) -> Self {
         Self {
-            ch_index,
+            ch_info,
             worker_index,
-            port,
             total_send: 0,
             tag,
-            buffer: BoundedBuffer::new(batch_size, batch_capacity),
+            buffer: BoundedBuffer::new(ch_info.batch_size, ch_info.batch_capacity),
             batches: vec![],
             inner: push,
         }
     }
 }
 
-impl <T, P> Pinnable for BufStreamPush<T, P> {
+impl<T, P> Pinnable for BufStreamPush<T, P> {
     fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
         Ok(*tag == self.tag)
     }
@@ -48,7 +48,7 @@ impl <T, P> Pinnable for BufStreamPush<T, P> {
     }
 }
 
-impl <T, P> Countable for BufStreamPush<T, P> {
+impl<T, P> Countable for BufStreamPush<T, P> {
     fn count_pushed(&self, tag: &Tag) -> usize {
         assert_eq!(tag, &self.tag);
         let buf_cnt = self.buffer.len();
@@ -58,6 +58,7 @@ impl <T, P> Countable for BufStreamPush<T, P> {
 
 impl<T, P> StreamPush<T> for BufStreamPush<T, P>
 where
+    T: Data,
     P: Push<MicroBatch<T>>,
 {
     fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
@@ -130,15 +131,27 @@ where
 }
 
 pub struct MultiScopeBufStreamPush<T, P> {
-    ch_index: u32,
-    worker_index: u32,
-    scope_level: u32,
-    port: Port,
+    ch_info: ChannelInfo,
+    worker_index: u16,
     pinned: Option<(Tag, BufferPtr<T>)>,
     batches: Vec<RoBatch<T>>,
     send_stat: AHashMap<Tag, usize>,
     scope_buffers: ScopeBuffer<T>,
     inner: P,
+}
+
+impl <T, P> MultiScopeBufStreamPush<T, P> {
+    pub fn new(ch_info: ChannelInfo, worker_index: u16, max_concurrent_scopes: u16, inner: P) -> Self {
+        Self {
+            ch_info,
+            worker_index,
+            pinned: None,
+            batches: vec![],
+            send_stat: AHashMap::new(),
+            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity, max_concurrent_scopes),
+            inner,
+        }
+    }
 }
 
 impl<T, P> Countable for MultiScopeBufStreamPush<T, P> {
@@ -161,6 +174,7 @@ impl<T, P> Countable for MultiScopeBufStreamPush<T, P> {
 
 impl<T, P> MultiScopeBufStreamPush<T, P>
 where
+    T: Data,
     P: Push<MicroBatch<T>>,
 {
     fn get_or_create_buffer(&mut self, tag: &Tag) -> Result<Option<BufferPtr<T>>, IOError> {
@@ -191,6 +205,7 @@ where
 
 impl<T, P> Pinnable for MultiScopeBufStreamPush<T, P>
 where
+    T: Data,
     P: Push<MicroBatch<T>>,
 {
     fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
@@ -229,6 +244,7 @@ where
 
 impl<T, P> StreamPush<T> for MultiScopeBufStreamPush<T, P>
 where
+    T: Data,
     P: Push<MicroBatch<T>>,
 {
     fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {

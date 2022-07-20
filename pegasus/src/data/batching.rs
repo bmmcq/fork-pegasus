@@ -118,15 +118,15 @@ impl<T> Iterator for RoBatch<T> {
 }
 
 pub struct BatchPool<T> {
-    capacity: usize,
-    batch_size: usize,
+    capacity: u16,
+    batch_size: u16,
     alloc_guard: usize,
     pool: Receiver<Box<[Option<T>]>>,
     recycle: Sender<Box<[Option<T>]>>,
 }
 
 impl<T> BatchPool<T> {
-    pub fn new(batch_size: usize, capacity: usize) -> Self {
+    pub fn new(batch_size: u16, capacity: u16) -> Self {
         let (recycle, pool) = crossbeam_channel::unbounded();
         Self { batch_size, capacity, alloc_guard: 0, pool, recycle }
     }
@@ -139,11 +139,11 @@ impl<T> BatchPool<T> {
                 Some(wb)
             }
             Err(TryRecvError::Empty) => {
-                if self.alloc_guard < self.capacity {
+                if self.alloc_guard < self.capacity as usize {
                     self.alloc_guard += 1;
-                    let mut wb = WoBatch::new(self.batch_size);
+                    let mut wb = WoBatch::new(self.batch_size as usize);
                     wb.set_recycle(self.recycle.clone());
-                    Some(WoBatch::new(self.batch_size))
+                    Some(WoBatch::new(self.batch_size as usize))
                 } else {
                     None
                 }

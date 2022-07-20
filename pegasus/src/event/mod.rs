@@ -18,26 +18,23 @@ use std::fmt::{Debug, Formatter};
 use pegasus_common::codec::*;
 
 use crate::graph::Port;
-use crate::progress::{Eos};
+use crate::progress::Eos;
 use crate::Tag;
 
 #[derive(Clone)]
 pub enum EventKind {
-    /// end signal indicates that no more data of a scope will be produced;
-    End(Eos),
-    /// hint to cancel producing data of scope to channel;
-    /// Cancel( (channel index,  scope tag) )
-    Cancel((u32, Tag)),
+    Eos(Eos),
+    Abort(Tag),
 }
 
 impl Debug for EventKind {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            EventKind::End(es) => {
-                write!(f, "End({:?})", es.tag())
+            EventKind::Eos(es) => {
+                write!(f, "Eos({:?})", es.tag())
             }
-            EventKind::Cancel(cs) => {
-                write!(f, "Cancel({:?})", cs.1)
+            EventKind::Abort(tag) => {
+                write!(f, "Abort({:?})", tag)
             }
         }
     }
@@ -66,13 +63,12 @@ impl Encode for Event {
         writer.write_u32(self.target_port.index as u32)?;
         writer.write_u32(self.target_port.port as u32)?;
         match &self.kind {
-            EventKind::End(end) => {
+            EventKind::Eos(end) => {
                 writer.write_u8(0)?;
                 end.write_to(writer)?;
             }
-            EventKind::Cancel((ch, tag)) => {
+            EventKind::Abort(tag) => {
                 writer.write_u8(1)?;
-                writer.write_u32(*ch)?;
                 tag.write_to(writer)?;
             }
         }
@@ -87,19 +83,17 @@ impl Decode for Event {
         let port = reader.read_u32()? as usize;
         let target_port = Port::new(index, port);
         let e = reader.read_u8()?;
-        let kind = match e {
+        match e {
             0 => {
-                let end = EndSyncSignal::read_from(reader)?;
-                EventKind::End(end)
+                let end = Eos::read_from(reader)?;
+                Ok(Event { from_worker, target_port, kind: EventKind::Eos(end) })
             }
             1 => {
-                let ch = reader.read_u32()?;
                 let tag = Tag::read_from(reader)?;
-                EventKind::Cancel((ch, tag))
+                Ok(Event { from_worker, target_port, kind: EventKind::Abort(tag) })
             }
-            _ => unreachable!("unrecognized event;"),
-        };
-        Ok(Event { from_worker, target_port, kind })
+            _ => Err(std::io::ErrorKind::InvalidData)?,
+        }
     }
 }
 

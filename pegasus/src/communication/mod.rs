@@ -21,50 +21,42 @@ use crate::data_plane::ChannelResource;
 use crate::errors::{BuildJobError, IOError};
 use crate::{Data, JobConf};
 
-pub(crate) mod abort;
+mod abort;
 mod block;
 mod buffer;
-pub(crate) mod channel;
-pub(crate) mod decorator;
-pub(crate) mod input;
-pub(crate) mod output;
-pub use channel::Channel;
-
-use crate::channel_id::ChannelId;
+pub mod output;
+pub mod input;
+pub mod builder;
+pub use builder::ChannelBuilder;
+use crate::graph::Port;
 
 pub type IOResult<D> = Result<D, IOError>;
-pub type Input<'a, D> = input::InputSession<'a, D>;
-pub type Output<'a, D> = output::RefWrapOutput<D>;
+
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+pub struct ChannelId {
+    /// The sequence number of task the communication_old belongs to;
+    pub job_seq: u64,
+    /// The index of a communication_old channel in the dataflow execution plan;
+    pub index: u16,
+}
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+pub struct ChannelInfo {
+    pub ch_id: ChannelId,
+    pub scope_level: u8,
+    pub source_peers: u16,
+    pub target_peers: u16,
+    pub batch_size: u16,
+    pub batch_capacity: u16,
+    pub source_port: Port,
+    pub target_port: Port,
+}
+
+
 
 thread_local! {
     static CHANNEL_RESOURCES : RefCell<HashMap<ChannelId, LinkedList<Box<dyn Any>>>> = RefCell::new(Default::default());
-}
-
-#[derive(Copy, Clone)]
-enum Magic {
-    Modulo(u64),
-    And(u64),
-}
-
-impl Magic {
-    pub fn new(len: usize) -> Self {
-        if len & (len - 1) == 0 {
-            Magic::And(len as u64 - 1)
-        } else {
-            Magic::Modulo(len as u64)
-        }
-    }
-
-    #[inline(always)]
-    pub fn exec(&self, id: u64) -> u64 {
-        if id == 0 {
-            return 0;
-        }
-        match self {
-            Magic::Modulo(x) => id % *x,
-            Magic::And(x) => id & *x,
-        }
-    }
 }
 
 pub(crate) fn build_channel<T: Data>(

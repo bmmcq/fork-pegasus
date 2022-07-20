@@ -15,89 +15,45 @@
 
 use crate::api::function::{BatchRouteFunction, FnResult, RouteFunction};
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
-use crate::channel_id::{ChannelId, ChannelInfo};
-use crate::communication::abort::{CancelHandle, SingleConsCancel};
 use crate::communication::buffer::ScopeBuffer;
-use crate::communication::decorator::aggregate::AggregateBatchPush;
-use crate::communication::decorator::broadcast::BroadcastBatchPush;
-use crate::communication::decorator::evented::EventEmitPush;
-use crate::communication::decorator::exchange::{ExchangeByBatchPush, ExchangeByDataPush};
-use crate::communication::decorator::{LocalMicroBatchPush, MicroBatchPush};
-use crate::communication::output::{OutputBuilderImpl, Producer};
 use crate::data::MicroBatch;
 use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::dataflow::DataflowBuilder;
 use crate::graph::Port;
 use crate::BuildJobError;
+use crate::communication::{ChannelId, ChannelInfo};
+use crate::communication::output::builder::SharedOutputBuild;
+use crate::communication::output::unify::EnumStreamPush;
 use crate::Data;
+use crate::Tag::Root;
 
-pub enum BatchRoute<T: Data> {
-    AllToOne(u32),
-    Dyn(Box<dyn BatchRouteFunction<T>>),
-}
-
-impl<T: Data> BatchRouteFunction<T> for BatchRoute<T> {
-    fn route(&self, batch: &MicroBatch<T>) -> FnResult<u64> {
-        match self {
-            BatchRoute::AllToOne(t) => Ok(*t as u64),
-            BatchRoute::Dyn(f) => f.route(batch),
-        }
-    }
-}
-
-pub enum ChannelKind<T: Data> {
+pub enum ChannelKind<T> {
     Pipeline,
-    Shuffle(Box<dyn RouteFunction<T>>),
-    BatchShuffle(BatchRoute<T>),
-    Broadcast,
+    Exchange(Box<dyn RouteFunction<T>>),
     Aggregate,
+    Broadcast,
 }
 
 impl<T: Data> ChannelKind<T> {
     pub fn is_pipeline(&self) -> bool {
-        match self {
-            ChannelKind::Pipeline => true,
-            _ => false,
-        }
+       matches!(self, Self::Pipeline)
     }
 }
 
-pub struct Channel<T: Data> {
-    /// the output port of an operator this channel bind to;
-    source: Port,
-    /// the hint of size of each batch this channel expect to deliver;
-    batch_size: usize,
-    /// the hint of size indicates how much batches of a scope can be delivered at same time;
-    batch_capacity: u32,
-    /// describe changes of data's scope(before vs after) through this channel;
-    scope_delta: MergedScopeDelta,
-    ///
+pub struct ChannelBuilder<T: Data> {
+
+    source: SharedOutputBuild<T>,
+
+    batch_size: u16,
+
+    batch_capacity: u16,
+
+    max_concurrent_scopes: u16,
+
     kind: ChannelKind<T>,
 }
 
-impl<T: Data> Clone for Channel<T> {
-    fn clone(&self) -> Self {
-        Channel {
-            batch_size: self.batch_size,
-            batch_capacity: self.batch_capacity,
-            source: self.source,
-            scope_delta: self.scope_delta.clone(),
-            kind: ChannelKind::Pipeline,
-        }
-    }
-}
 
-impl<T: Data> Default for Channel<T> {
-    fn default() -> Self {
-        Channel {
-            batch_size: 1024,
-            batch_capacity: 64,
-            source: Port::new(0, 0),
-            scope_delta: MergedScopeDelta::new(0),
-            kind: ChannelKind::Pipeline,
-        }
-    }
-}
 
 pub(crate) struct MaterializedChannel<T: Data> {
     push: Producer<T>,
@@ -111,33 +67,23 @@ impl<T: Data> MaterializedChannel<T> {
     }
 }
 
-impl<T: Data> Channel<T> {
-    pub fn bind(port: &OutputBuilderImpl<T>) -> Self {
-        let scope_level = port.get_scope_level();
-        Channel {
-            batch_size: port.get_batch_size(),
-            batch_capacity: port.get_batch_capacity(),
-            source: port.get_port(),
-            scope_delta: MergedScopeDelta::new(scope_level as usize),
-            kind: ChannelKind::Pipeline,
-        }
-    }
+impl<T: Data> ChannelBuilder<T> {
 
-    pub fn set_batch_size(&mut self, batch_size: usize) -> &mut Self {
+    pub fn set_batch_size(&mut self, batch_size: u16) -> &mut Self {
         self.batch_size = batch_size;
         self
     }
 
-    pub fn get_batch_size(&self) -> usize {
+    pub fn get_batch_size(&self) -> u16 {
         self.batch_size
     }
 
-    pub fn set_batch_capacity(&mut self, capacity: u32) -> &mut Self {
+    pub fn set_batch_capacity(&mut self, capacity: u16) -> &mut Self {
         self.batch_capacity = capacity;
         self
     }
 
-    pub fn get_batch_capacity(&self) -> u32 {
+    pub fn get_batch_capacity(&self) -> u16 {
         self.batch_capacity
     }
 
@@ -147,11 +93,11 @@ impl<T: Data> Channel<T> {
     }
 
     pub fn add_delta(&mut self, delta: ScopeDelta) -> Option<ScopeDelta> {
-        self.scope_delta.add_delta(delta)
+        self.source.add_delta(delta)
     }
 
-    pub fn get_scope_level(&self) -> u32 {
-        self.scope_delta.output_scope_level() as u32
+    pub fn get_scope_level(&self) -> u8 {
+        self.source.get_scope_level()
     }
 
     pub fn is_pipeline(&self) -> bool {
@@ -159,16 +105,29 @@ impl<T: Data> Channel<T> {
     }
 }
 
-impl<T: Data> Channel<T> {
-    fn build_pipeline(self, target: Port, id: ChannelId) -> MaterializedChannel<T> {
-        let (tx, rx) = crate::data_plane::pipeline::<MicroBatch<T>>(id);
+impl<T: Data> ChannelBuilder<T> {
+    fn build_pipeline(self, target_port: Port, ch_id: ChannelId) -> MaterializedChannel<T> {
+        let (tx, rx) = crate::data_plane::pipeline::<MicroBatch<T>>(ch_id);
         let scope_level = self.get_scope_level();
-        let ch_info = ChannelInfo::new(id, scope_level, 1, 1, self.source, target);
-        let push = MicroBatchPush::Pipeline(LocalMicroBatchPush::new(ch_info, tx));
-        let worker = crate::worker_id::get_current_worker().index;
-        let ch = CancelHandle::SC(SingleConsCancel::new(worker));
-        let push = Producer::new(ch_info, self.scope_delta, push, ch);
-        MaterializedChannel { push, pull: rx.into(), notify: None }
+
+        let ch_info = ChannelInfo {
+            ch_id,
+            scope_level,
+            source_peers: 1,
+            target_peers: 1,
+            batch_size: self.batch_size,
+            batch_capacity: self.batch_capacity,
+            source_port: self.source.get_port(),
+            target_port
+        };
+        let push = DataPlanePush::IntraThread(tx);
+        if scope_level == 0 {
+            let tag = self.source.get_delta().evolve(&Root);
+            self.source.set_push(EnumStreamPush::pipeline(ch_info, tag, push));
+        } else {
+            self.source.set_push(EnumStreamPush::multi_scope_pipeline(ch_info, self.max_concurrent_scopes, push));
+        };
+
     }
 
     fn build_remote(
@@ -194,7 +153,9 @@ impl<T: Data> Channel<T> {
         mut self, target: Port, dfb: &DataflowBuilder,
     ) -> Result<MaterializedChannel<T>, BuildJobError> {
         let index = dfb.next_channel_index();
+
         let id = ChannelId { job_seq: dfb.config.job_id as u64, index };
+
         let batch_size = self.batch_size;
         let scope_level = self.get_scope_level();
         let batch_capacity = self.batch_capacity as usize;

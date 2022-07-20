@@ -16,7 +16,7 @@ pub(crate) struct BoundedBuffer<D> {
 }
 
 impl<D> BoundedBuffer<D> {
-    pub(crate) fn new(batch_size: usize, batch_capacity: usize) -> Self {
+    pub(crate) fn new(batch_size: u16, batch_capacity: u16) -> Self {
         let pool = BatchPool::new(batch_size, batch_capacity);
         BoundedBuffer { exhaust: false, buffer: None, pool }
     }
@@ -159,17 +159,17 @@ impl<D> DerefMut for BufferPtr<D> {
 }
 
 pub struct ScopeBuffer<D> {
-    batch_size: usize,
-    batch_capacity: usize,
-    max_scope_buffer_size: usize,
+    batch_size: u16,
+    batch_capacity: u16,
+    max_concurrent_scopes: u16,
     scope_buffers: AHashMap<Tag, BufferPtr<D>>,
 }
 
 unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
-    pub(crate) fn new(batch_size: usize, batch_capacity: usize, max_scope_buffer_size: usize) -> Self {
-        ScopeBuffer { batch_size, batch_capacity, max_scope_buffer_size, scope_buffers: AHashMap::new() }
+    pub(crate) fn new(batch_size: u16, batch_capacity: u16, max_concurrent_scopes: u16) -> Self {
+        ScopeBuffer { batch_size, batch_capacity, max_concurrent_scopes, scope_buffers: AHashMap::new() }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {
@@ -208,7 +208,7 @@ impl<D> ScopeBuffer<D> {
                     let ptr = slot.clone();
                     self.scope_buffers.insert(tag.clone(), slot);
                     Some(ptr)
-                } else if self.scope_buffers.len() < self.max_scope_buffer_size {
+                } else if self.scope_buffers.len() < self.max_concurrent_scopes as usize {
                     Some(self.create_new_buffer_slot(tag))
                 } else {
                     None
@@ -234,7 +234,7 @@ impl<D> Default for ScopeBuffer<D> {
         ScopeBuffer {
             batch_size: 1,
             batch_capacity: 1,
-            max_scope_buffer_size: 0,
+            max_concurrent_scopes: 0,
             scope_buffers: Default::default(),
         }
     }

@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
-use pegasus_common::rc::RcPointer;
+use pegasus_common::rc::{RcPointer, UnsafeRcPtr};
 
 use crate::communication::IOResult;
 use crate::data_plane::{DataPlanePull, DataPlanePush, Pull, Push};
@@ -10,12 +10,12 @@ use crate::event::Event;
 
 #[derive(Clone)]
 pub struct EventEmitter {
-    tx: RcPointer<RefCell<Vec<DataPlanePush<Event>>>>,
+    tx: UnsafeRcPtr<RefCell<Vec<DataPlanePush<Event>>>>,
 }
 
 impl EventEmitter {
     pub fn new(tx: Vec<DataPlanePush<Event>>) -> Self {
-        EventEmitter { tx: RcPointer::new(RefCell::new(tx)) }
+        EventEmitter { tx: UnsafeRcPtr::new(RefCell::new(tx)) }
     }
 
     pub fn peers(&self) -> usize {

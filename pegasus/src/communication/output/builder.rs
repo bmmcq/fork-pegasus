@@ -16,31 +16,31 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use pegasus_common::downcast::*;
-
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
 use crate::communication::output::handle::OutputHandle;
-use crate::communication::output::output::{OutputAbortNotify, Producer};
-use crate::communication::output::streaming::EnumStreamPush;
-use crate::communication::output::{OutputBuilder, OutputInfo, OutputProxy, RefWrapOutput};
+use crate::communication::output::streaming::StreamPush;
+use crate::communication::output::{Output, OutputInfo};
+use crate::communication::output::output::{MultiScopeOutputProxy, OutputProxy};
+use crate::communication::output::unify::EnumStreamPush;
 use crate::graph::Port;
 use crate::Data;
 
 pub trait OutputBuilder {
-    fn build(self: Box<Self>) -> Option<Box<dyn OutputProxy>>;
+    fn build(self: Box<Self>) -> Option<Box<dyn Output>>;
 }
 
-pub struct OutputBuilderImpl<D> {
+pub struct OutputBuilderImpl<D: Data> {
     info: OutputInfo,
     delta: MergedScopeDelta,
     push: Option<EnumStreamPush<D>>,
 }
 
-impl<D> OutputBuilderImpl<D> {
+impl<D: Data> OutputBuilderImpl<D>
+{
     pub fn new(port: Port, scope_level: u8) -> Self {
         OutputBuilderImpl {
             delta: MergedScopeDelta::new(scope_level),
-            info: OutputInfo { port, scope_level, targets: 1 },
+            info: OutputInfo { port, scope_level },
             push: None,
         }
     }
@@ -49,37 +49,54 @@ impl<D> OutputBuilderImpl<D> {
         self.info.port
     }
 
-    pub fn get_batch_size(&self) -> u16 {
-        self.info.batch_size
-    }
-
-    pub fn get_batch_capacity(&self) -> u16 {
-        self.info.batch_capacity
-    }
-
     pub fn get_scope_level(&self) -> u8 {
         self.info.scope_level
-    }
-
-    pub fn set_batch_size(&mut self, size: u16) {
-        self.info.batch_size = size;
-    }
-
-    pub fn set_batch_capacity(&mut self, cap: u16) {
-        self.info.batch_capacity = cap;
     }
 
     pub fn set_push(&mut self, push: EnumStreamPush<D>) {
         self.push = Some(push);
     }
 
-    pub fn add_delta(&mut self, delta: ScopeDelta) {
-        self.delta.add_delta(delta);
+    pub fn add_delta(&mut self, delta: ScopeDelta) -> Option<ScopeDelta> {
+        self.delta.add_delta(delta)
     }
 }
 
-impl<D: Data> OutputBuilder for OutputBuilderImpl<D> {
-    fn build(self: Box<Self>) -> Option<Box<dyn OutputProxy>> {
-        todo!()
+
+pub struct SharedOutputBuild<D: Data> {
+    inner: Rc<RefCell<OutputBuilderImpl<D>>>
+}
+
+impl <D: Data> SharedOutputBuild<D> {
+    pub fn get_port(&self) -> Port {
+        self.inner.borrow().get_port()
+    }
+
+    pub fn get_scope_level(&self) -> u8 {
+        self.inner.borrow().get_scope_level()
+    }
+
+    pub fn set_push(&self, push: EnumStreamPush<D>) {
+        self.inner.borrow_mut().set_push(push)
+    }
+
+    pub fn add_delta(&self, delta: ScopeDelta) -> Option<ScopeDelta> {
+        self.inner.borrow_mut().add_delta(delta)
+    }
+
+    pub fn get_delta(&self) -> MergedScopeDelta {
+        self.inner.borrow().delta
+    }
+}
+
+impl <D: Data> OutputBuilder for SharedOutputBuild<D>  {
+    fn build(self: Box<Self>) -> Option<Box<dyn Output>> {
+        let bm  = self.inner.borrow_mut();
+        let push = bm.push.take()?;
+        if bm.info.scope_level == 0 {
+            Some(Box::new(OutputProxy::new(bm.info, bm.delta, push)))
+        } else {
+            Some(Box::new(MultiScopeOutputProxy::new(bm.info, bm.delta, push)))
+        }
     }
 }

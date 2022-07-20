@@ -22,9 +22,9 @@ use crate::api::function::FnResult;
 use crate::api::meta::OperatorInfo;
 use crate::api::scope::ScopeDelta;
 use crate::api::{Branch, Map, Unary};
-use crate::communication::channel::{BatchRoute, ChannelKind};
+use crate::communication::builder::{BatchRoute, ChannelKind};
 use crate::communication::output::OutputBuilderImpl;
-use crate::communication::Channel;
+use crate::communication::ChannelBuilder;
 use crate::dataflow::{DataflowBuilder, OperatorRef};
 use crate::errors::BuildJobError;
 use crate::graph::{Edge, Port};
@@ -37,7 +37,7 @@ pub struct Stream<D: Data> {
     /// the upstream this stream flowed;
     upstream: OutputBuilderImpl<D>,
     /// adapter to its upstream output
-    ch: Channel<D>,
+    ch: ChannelBuilder<D>,
     /// builder of dataflow plan;
     builder: DataflowBuilder,
     /// static partitions of the stream;
@@ -46,7 +46,7 @@ pub struct Stream<D: Data> {
 
 impl<D: Data> Stream<D> {
     pub(crate) fn new(upstream: OutputBuilderImpl<D>, dfb: &DataflowBuilder) -> Self {
-        let ch = Channel::bind(&upstream);
+        let ch = ChannelBuilder::bind(&upstream);
         let partitions = dfb.worker_id.total_peers() as usize;
         Stream { upstream, ch, builder: dfb.clone(), partitions }
     }
@@ -171,7 +171,7 @@ impl<D: Data> Stream<D> {
         let partitions = self.partitions;
         let op = self.add_operator(name, op_builder)?;
         let port = op.new_output::<O>();
-        let ch = Channel::bind(&port);
+        let ch = ChannelBuilder::bind(&port);
 
         Ok(Stream { upstream: port, ch, builder: dfb, partitions })
     }
@@ -188,7 +188,7 @@ impl<D: Data> Stream<D> {
         let partitions = self.partitions;
         let op = self.add_notify_operator(name, op_builder)?;
         let port = op.new_output::<O>();
-        let ch = Channel::bind(&port);
+        let ch = ChannelBuilder::bind(&port);
 
         Ok(Stream { upstream: port, ch, builder: dfb, partitions })
     }
@@ -215,7 +215,7 @@ impl<D: Data> Stream<D> {
             let partitions = std::cmp::max(self.partitions, other.partitions);
             let port = op.new_output::<O>();
 
-            let ch = Channel::bind(&port);
+            let ch = ChannelBuilder::bind(&port);
             Ok(Stream { upstream: port, ch, builder: dfb, partitions })
         }
     }
@@ -241,7 +241,7 @@ impl<D: Data> Stream<D> {
             let dfb = self.builder.clone();
             let partitions = std::cmp::max(self.partitions, other.partitions);
             let output = op.new_output::<O>();
-            let ch = Channel::bind(&output);
+            let ch = ChannelBuilder::bind(&output);
             Ok(Stream { ch, upstream: output, builder: dfb, partitions })
         }
     }
@@ -260,9 +260,9 @@ impl<D: Data> Stream<D> {
         let right = op.new_output::<R>();
         let dfb = self.builder.clone();
         let partitions = self.partitions;
-        let ch = Channel::bind(&left);
+        let ch = ChannelBuilder::bind(&left);
         let left = Stream { upstream: left, ch, builder: dfb.clone(), partitions };
-        let ch = Channel::bind(&right);
+        let ch = ChannelBuilder::bind(&right);
         let right = Stream { upstream: right, ch, builder: dfb, partitions };
         Ok((left, right))
     }
@@ -281,9 +281,9 @@ impl<D: Data> Stream<D> {
         let right = op.new_output::<R>();
         let dfb = self.builder.clone();
         let partitions = self.partitions;
-        let ch = Channel::bind(&left);
+        let ch = ChannelBuilder::bind(&left);
         let left = Stream { upstream: left, ch, builder: dfb.clone(), partitions };
-        let ch = Channel::bind(&right);
+        let ch = ChannelBuilder::bind(&right);
         let right = Stream { upstream: right, ch, builder: dfb, partitions };
         Ok((left, right))
     }
@@ -368,7 +368,7 @@ impl<D: Data> Stream<D> {
 
     fn connect(&mut self, op: &OperatorRef) -> Result<Edge, BuildJobError> {
         let target = op.next_input_port();
-        let ch = std::mem::replace(&mut self.ch, Channel::default());
+        let ch = std::mem::replace(&mut self.ch, ChannelBuilder::default());
         let channel = ch.connect_to(target, &self.builder)?;
         let (push, pull, notify) = channel.take();
         let ch_info = push.ch_info;
