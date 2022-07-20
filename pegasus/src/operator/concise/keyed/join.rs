@@ -16,8 +16,8 @@
 use ahash::AHashMap;
 
 use crate::api::{Binary, HasKey, Join, PartitionByKey};
-use crate::communication::output::OutputSession;
-use crate::communication::Output;
+use crate::channel::output::OutputSession;
+use crate::channel::Output;
 use crate::errors::{BuildJobError, JobExecError};
 use crate::operator::TidyTagMap;
 use crate::stream::Stream;

@@ -1,13 +1,13 @@
-use crate::communication::output::batched::aggregate::{AggregateByScopePush, AggregatePush};
-use crate::communication::output::batched::event::EventEosBatchPush;
-use crate::communication::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
-use crate::communication::output::streaming::partition::PartitionStreamPush;
-use crate::communication::output::streaming::{Pushed, StreamPush};
+use crate::channel::output::batched::aggregate::{AggregateByScopePush, AggregatePush};
+use crate::channel::output::batched::event::EventEosBatchPush;
+use crate::channel::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
+use crate::channel::output::streaming::partition::PartitionStreamPush;
+use crate::channel::output::streaming::{Pushed, StreamPush};
 use crate::data_plane::DataPlanePush;
 use crate::errors::IOResult;
 use crate::progress::Eos;
 use crate::{Data, Tag};
-use crate::communication::ChannelInfo;
+use crate::channel::ChannelInfo;
 use crate::graph::Port;
 
 pub enum EnumStreamPush<T: Data> {

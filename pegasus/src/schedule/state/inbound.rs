@@ -1,4 +1,4 @@
-use crate::communication::IOResult;
+use crate::channel::IOResult;
 use crate::data::MicroBatch;
 use crate::data_plane::{DataPlanePush, Push};
 use crate::graph::Port;

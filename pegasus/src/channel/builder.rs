@@ -15,15 +15,15 @@
 
 use crate::api::function::{BatchRouteFunction, FnResult, RouteFunction};
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
-use crate::communication::buffer::ScopeBuffer;
+use crate::channel::buffer::ScopeBuffer;
 use crate::data::MicroBatch;
 use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::dataflow::DataflowBuilder;
 use crate::graph::Port;
 use crate::BuildJobError;
-use crate::communication::{ChannelId, ChannelInfo};
-use crate::communication::output::builder::SharedOutputBuild;
-use crate::communication::output::unify::EnumStreamPush;
+use crate::channel::{ChannelId, ChannelInfo};
+use crate::channel::output::builder::SharedOutputBuild;
+use crate::channel::output::unify::EnumStreamPush;
 use crate::Data;
 use crate::Tag::Root;
 
@@ -136,7 +136,7 @@ impl<T: Data> ChannelBuilder<T> {
         (ChannelInfo, Vec<EventEmitPush<T>>, DataPlanePull<MicroBatch<T>>, DataPlanePush<MicroBatch<T>>),
         BuildJobError,
     > {
-        let (mut raw, pull) = crate::communication::build_channel::<MicroBatch<T>>(id, &dfb.config)?.take();
+        let (mut raw, pull) = crate::channel::build_channel::<MicroBatch<T>>(id, &dfb.config)?.take();
         let worker_index = crate::worker_id::get_current_worker().index as usize;
         let notify = raw.swap_remove(worker_index);
         let ch_info = ChannelInfo::new(id, scope_level, raw.len(), raw.len(), self.source, target);

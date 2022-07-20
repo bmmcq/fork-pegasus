@@ -1,7 +1,7 @@
 use ahash::AHashMap;
 
-use crate::communication::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
-use crate::communication::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
+use crate::channel::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
+use crate::channel::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
 use crate::data::batching::{RoBatch, WoBatch};
 use crate::data::MicroBatch;
 use crate::data_plane::Push;
@@ -9,7 +9,7 @@ use crate::errors::{IOError, IOResult};
 use crate::graph::Port;
 use crate::progress::Eos;
 use crate::{Data, Tag};
-use crate::communication::ChannelInfo;
+use crate::channel::ChannelInfo;
 
 pub struct BufStreamPush<T, P> {
     ch_info: ChannelInfo,

@@ -1,8 +1,8 @@
 use std::any::Any;
 use std::cell::RefCell;
-use crate::communication::output::handle::{MultiScopeOutputHandle, MultiScopeOutputSession, OutputHandle, OutputSession};
-use crate::communication::output::{Output, OutputInfo};
-use crate::communication::output::unify::EnumStreamPush;
+use crate::channel::output::handle::{MultiScopeOutputHandle, MultiScopeOutputSession, OutputHandle, OutputSession};
+use crate::channel::output::{Output, OutputInfo};
+use crate::channel::output::unify::EnumStreamPush;
 use crate::{Data, Tag};
 use crate::api::scope::MergedScopeDelta;
 use crate::errors::IOResult;

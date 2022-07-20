@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 
 use pegasus_common::rc::{RcPointer, UnsafeRcPtr};
 
-use crate::communication::IOResult;
+use crate::channel::IOResult;
 use crate::data_plane::{DataPlanePull, DataPlanePush, Pull, Push};
 use crate::errors::IOError;
 use crate::event::Event;

@@ -38,7 +38,7 @@ pub mod api;
 pub(crate) mod data;
 #[macro_use]
 pub mod macros;
-pub mod communication;
+pub mod channel;
 mod data_plane;
 pub mod dataflow;
 mod event;

@@ -1,4 +1,4 @@
-use crate::communication::buffer::BoundedBuffer;
+use crate::channel::buffer::BoundedBuffer;
 use crate::data::batching::RoBatch;
 use crate::data::{Item, Package};
 use crate::data_plane::Push;

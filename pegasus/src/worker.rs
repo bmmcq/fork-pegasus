@@ -23,7 +23,7 @@ use pegasus_executor::{Task, TaskState};
 
 use crate::api::primitive::source::Source;
 use crate::channel_id::ChannelId;
-use crate::communication::output::{OutputBuilder, OutputBuilderImpl};
+use crate::channel::output::{OutputBuilder, OutputBuilderImpl};
 use crate::data_plane::Push;
 use crate::dataflow::{Dataflow, DataflowBuilder};
 use crate::errors::{BuildJobError, JobExecError};
@@ -76,7 +76,7 @@ impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
         // set current worker's id into tls variable to make it accessible at anywhere;
         let _g = crate::worker_id::guard(self.id);
         let resource =
-            crate::communication::build_channel::<Event>(ChannelId::new(self.id.job_id, 0), &self.conf)?;
+            crate::channel::build_channel::<Event>(ChannelId::new(self.id.job_id, 0), &self.conf)?;
         assert_eq!(resource.ch_id.index, 0);
         let (mut tx, rx) = resource.take();
         if self.conf.total_workers() > 1 {

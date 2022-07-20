@@ -17,11 +17,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use crate::api::scope::{MergedScopeDelta, ScopeDelta};
-use crate::communication::output::handle::OutputHandle;
-use crate::communication::output::streaming::StreamPush;
-use crate::communication::output::{Output, OutputInfo};
-use crate::communication::output::output::{MultiScopeOutputProxy, OutputProxy};
-use crate::communication::output::unify::EnumStreamPush;
+use crate::channel::output::handle::OutputHandle;
+use crate::channel::output::streaming::StreamPush;
+use crate::channel::output::{Output, OutputInfo};
+use crate::channel::output::output::{MultiScopeOutputProxy, OutputProxy};
+use crate::channel::output::unify::EnumStreamPush;
 use crate::graph::Port;
 use crate::Data;
 

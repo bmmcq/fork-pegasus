@@ -23,8 +23,8 @@ use pegasus_common::rc::UnsafeRcPtr;
 
 use crate::api::notification::{Cancel, End};
 use crate::api::CorrelatedSubTask;
-use crate::communication::input::{new_input_session, InputProxy};
-use crate::communication::output::{new_output, OutputProxy};
+use crate::channel::input::{new_input_session, InputProxy};
+use crate::channel::output::{new_output, OutputProxy};
 use crate::data::MicroBatch;
 use crate::errors::{ErrorKind, JobExecError};
 use crate::operator::{Notifiable, OperatorCore};

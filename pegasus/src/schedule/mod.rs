@@ -15,7 +15,7 @@
 
 use std::time::Instant;
 
-use crate::communication::output::OutputAbortNotify;
+use crate::channel::output::OutputAbortNotify;
 use crate::data_plane::DataPlanePull;
 use crate::dataflow::Dataflow;
 use crate::errors::{IOResult, JobExecError};

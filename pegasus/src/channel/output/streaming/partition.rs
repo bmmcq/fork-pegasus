@@ -2,11 +2,11 @@ use ahash::AHashMap;
 
 use crate::api::function::{FnResult, RouteFunction};
 use crate::channel_id::ChannelInfo;
-use crate::communication::buffer::{BufferPtr, ScopeBuffer};
-use crate::communication::output::batched::Rectifier;
-use crate::communication::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
-use crate::communication::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
-use crate::communication::IOResult;
+use crate::channel::buffer::{BufferPtr, ScopeBuffer};
+use crate::channel::output::batched::Rectifier;
+use crate::channel::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
+use crate::channel::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
+use crate::channel::IOResult;
 use crate::data::batching::{RoBatch, WoBatch};
 use crate::data::MicroBatch;
 use crate::data_plane::intra_thread::ThreadPush;

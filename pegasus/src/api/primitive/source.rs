@@ -13,7 +13,7 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use crate::communication::output::OutputBuilderImpl;
+use crate::channel::output::OutputBuilderImpl;
 use crate::dataflow::DataflowBuilder;
 use crate::errors::BuildJobError;
 use crate::stream::Stream;

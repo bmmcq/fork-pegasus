@@ -20,7 +20,7 @@ use std::collections::BinaryHeap;
 use std::sync::Arc;
 
 use crate::api::{Limit, SortLimit, SortLimitBy, Unary};
-use crate::communication::output::OutputProxy;
+use crate::channel::output::OutputProxy;
 use crate::stream::Stream;
 use crate::tag::tools::map::TidyTagMap;
 use crate::{BuildJobError, Data};

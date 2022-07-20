@@ -15,8 +15,8 @@
 
 use std::cell::RefMut;
 
-use crate::communication::input::input::InputBlockGuard;
-use crate::communication::input::InputHandle;
+use crate::channel::input::input::InputBlockGuard;
+use crate::channel::input::InputHandle;
 use crate::data::MicroBatch;
 use crate::errors::JobExecError;
 use crate::{Data, Tag};

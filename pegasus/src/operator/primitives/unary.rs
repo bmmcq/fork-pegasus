@@ -15,9 +15,9 @@
 
 use crate::api::meta::OperatorInfo;
 use crate::api::Unary;
-use crate::communication::input::{new_input_session, InputProxy};
-use crate::communication::output::{new_output, OutputProxy};
-use crate::communication::{Input, Output};
+use crate::channel::input::{new_input_session, InputProxy};
+use crate::channel::output::{new_output, OutputProxy};
+use crate::channel::{Input, Output};
 use crate::errors::{BuildJobError, JobExecError};
 use crate::operator::OperatorCore;
 use crate::stream::Stream;

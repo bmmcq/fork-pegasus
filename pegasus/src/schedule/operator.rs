@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::communication::abort::AbortHandle;
-use crate::communication::IOResult;
+use crate::channel::abort::AbortHandle;
+use crate::channel::IOResult;
 use crate::event::{Event, EventKind};
 use crate::graph::Port;
 use crate::schedule::state::inbound::{EndNotify, InboundStreamState};

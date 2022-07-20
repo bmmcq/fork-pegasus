@@ -23,7 +23,7 @@ use ahash::AHashSet;
 use pegasus_common::downcast::*;
 
 use crate::channel_id::ChannelInfo;
-use crate::communication::input::{InputProxy, InputSession};
+use crate::channel::input::{InputProxy, InputSession};
 use crate::data::MicroBatch;
 use crate::data_plane::{DataPlanePull, Pull};
 use crate::errors::IOResult;

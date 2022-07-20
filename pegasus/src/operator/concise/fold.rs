@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use crate::api::function::FnResult;
 use crate::api::{Fold, Unary};
-use crate::communication::output::OutputProxy;
+use crate::channel::output::OutputProxy;
 use crate::stream::{Single, SingleItem, Stream};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{BuildJobError, Data};

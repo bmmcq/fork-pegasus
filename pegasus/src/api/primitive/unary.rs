@@ -14,7 +14,7 @@
 //! limitations under the License.
 
 use crate::api::meta::OperatorInfo;
-use crate::communication::{Input, Output};
+use crate::channel::{Input, Output};
 use crate::errors::{BuildJobError, JobExecError};
 use crate::stream::Stream;
 use crate::Data;

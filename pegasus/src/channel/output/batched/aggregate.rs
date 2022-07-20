@@ -1,8 +1,8 @@
 use ahash::AHashMap;
 
-use crate::communication::buffer::ScopeBuffer;
-use crate::communication::output::batched::Rectifier;
-use crate::communication::IOResult;
+use crate::channel::buffer::ScopeBuffer;
+use crate::channel::output::batched::Rectifier;
+use crate::channel::IOResult;
 use crate::data::batching::RoBatch;
 use crate::data::MicroBatch;
 use crate::data_plane::Push;

@@ -17,8 +17,8 @@ use std::fmt::Debug;
 
 use crate::api::primitive::sink::Sink;
 use crate::api::FromStream;
-use crate::communication::input::{new_input_session, InputProxy};
-use crate::communication::output::OutputProxy;
+use crate::channel::input::{new_input_session, InputProxy};
+use crate::channel::output::OutputProxy;
 use crate::errors::{BuildJobError, JobExecError};
 use crate::operator::OperatorCore;
 use crate::stream::{Single, SingleItem, Stream};

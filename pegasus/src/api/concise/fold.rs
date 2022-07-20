@@ -29,7 +29,7 @@ pub trait Fold<D: Data> {
     ///
     /// If the closure is both **associative** and **commutative**, it is recommended using
     /// [`fold_partition()'] + [`reduce()`], where [`fold_partition()'] can locally fold the
-    /// data into one accumulator in each partition in order to reduce communication cost. The
+    /// data into one accumulator in each partition in order to reduce channel cost. The
     /// concept is similar to the Combiner of MapReduce.
     ///
     /// [`SingleItem`]: crate::stream::SingleItem

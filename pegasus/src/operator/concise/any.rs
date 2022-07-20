@@ -1,5 +1,5 @@
 use crate::api::{HasAny, Unary};
-use crate::communication::output::OutputProxy;
+use crate::channel::output::OutputProxy;
 use crate::stream::{Single, SingleItem, Stream};
 use crate::tag::tools::map::TidyTagMap;
 use crate::{BuildJobError, Data};

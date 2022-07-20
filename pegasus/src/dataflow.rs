@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use crate::api::meta::OperatorInfo;
 use crate::channel_id::ChannelInfo;
-use crate::communication::output::OutputBuilderImpl;
+use crate::channel::output::OutputBuilderImpl;
 use crate::data::MicroBatch;
 use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::errors::{BuildJobError, IOResult, JobExecError};
