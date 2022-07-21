@@ -16,7 +16,6 @@
 #[macro_use]
 extern crate log;
 
-pub mod buffer;
 pub mod bytes;
 pub mod channel;
 pub mod codec;
@@ -26,26 +25,4 @@ pub mod io;
 pub mod logs;
 pub mod queue;
 pub mod rc;
-pub mod utils;
-
-#[macro_export]
-macro_rules! inspect {
-    ($($arg:tt)+) => (
-         if log_enabled!(log::Level::Info) {
-            log!(log::Level::Info, $($arg)+);
-         } else {
-            println!($($arg)+)
-         }
-    )
-}
-
-#[macro_export]
-macro_rules! inspect_err {
-    ($($arg:tt)+) => (
-         if log_enabled!(log::Level::Error) {
-            log!(log::Level::Error, $($arg)+);
-         } else {
-            eprintln!($($arg)+)
-         }
-    )
-}
+pub mod tag;

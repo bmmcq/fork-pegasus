@@ -3,6 +3,7 @@ members = [
     "common",
     "memory",
     "network",
+    "channel",
     "executor",
     "graph",
     "pegasus",

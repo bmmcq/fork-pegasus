@@ -28,10 +28,8 @@ use std::sync::{Arc, Mutex, RwLock};
 
 mod config;
 mod graph;
-pub mod tag;
 #[macro_use]
 mod worker_id;
-mod channel_id;
 #[macro_use]
 pub mod errors;
 pub mod api;

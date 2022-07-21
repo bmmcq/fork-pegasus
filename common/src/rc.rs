@@ -14,10 +14,7 @@
 //! limitations under the License.
 
 use std::ops::Deref;
-use std::ptr::NonNull;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 
 /// This is a highly unsafe reference-count pointer;
 ///
@@ -49,58 +46,6 @@ use std::sync::Arc;
 /// [`Sync`]: https://doc.rust-lang.org/std/marker/trait.Sync.html
 /// [`Arc`]: https://doc.rust-lang.org/std/sync/struct.Arc.html
 ///
-pub struct RcPointer<T: ?Sized> {
-    ptr: NonNull<T>,
-    count: Arc<AtomicUsize>,
-}
-
-unsafe impl<T: ?Sized + Send> Send for RcPointer<T> {}
-
-impl<T> RcPointer<T> {
-    #[cfg(not(nightly))]
-    pub fn new(item: T) -> Self {
-        let ptr = NonNull::new(Box::into_raw(Box::new(item))).unwrap();
-        RcPointer { ptr, count: Arc::new(AtomicUsize::new(1)) }
-    }
-
-    #[cfg(nightly)]
-    pub fn new(item: T) -> Self {
-        let ptr = Box::into_raw_non_null(box item);
-        RcPointer { ptr, count: Arc::new(AtomicUsize::new(1)) }
-    }
-}
-
-impl<T: ?Sized> Clone for RcPointer<T> {
-    fn clone(&self) -> Self {
-        if self.count.fetch_add(1, Ordering::SeqCst) >= 1 {
-            RcPointer { ptr: self.ptr, count: self.count.clone() }
-        } else {
-            unreachable!("already dropped;")
-        }
-    }
-}
-
-impl<T: ?Sized> Deref for RcPointer<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        unsafe { &(*self.ptr.as_ptr()) }
-    }
-}
-
-impl<T: std::fmt::Debug> std::fmt::Debug for RcPointer<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        unsafe { (&(*self.ptr.as_ptr())).fmt(f) }
-    }
-}
-
-impl<T: ?Sized> Drop for RcPointer<T> {
-    fn drop(&mut self) {
-        if self.count.fetch_sub(1, Ordering::SeqCst) == 1 {
-            unsafe { std::ptr::drop_in_place(self.ptr.as_ptr()) }
-        }
-    }
-}
 
 pub struct UnsafeRcPtr<T: ?Sized> {
     ptr: Rc<T>,

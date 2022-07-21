@@ -970,6 +970,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pegasus_channel"
+version = "0.1.0"
+dependencies = [
+ "ahash",
+ "crossbeam-channel",
+ "enum_dispatch",
+ "log",
+ "nohash-hasher",
+ "pegasus_common",
+]
+
+[[package]]
 name = "pegasus_common"
 version = "0.1.0"
 dependencies = [
