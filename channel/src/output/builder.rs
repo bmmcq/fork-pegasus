@@ -20,7 +20,7 @@ use std::rc::Rc;
 use crate::data::Data;
 use crate::output::{Output, OutputInfo};
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
-use crate::output::output::{MultiScopeOutputProxy, OutputProxy};
+use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamPush;
 use crate::Port;
 

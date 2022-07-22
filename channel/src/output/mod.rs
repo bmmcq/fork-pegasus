@@ -68,6 +68,6 @@ pub mod batched;
 pub mod builder;
 pub mod delta;
 pub mod handle;
-pub mod output;
+pub mod proxy;
 pub mod streaming;
 pub mod unify;

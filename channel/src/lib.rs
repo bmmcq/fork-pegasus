@@ -3,6 +3,7 @@ extern crate enum_dispatch;
 #[macro_use]
 extern crate log;
 
+use std::fmt::{Display, Formatter};
 use crate::error::IOError;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default)]
@@ -14,6 +15,12 @@ pub struct Port {
 impl From<(u16, u8)> for Port {
     fn from(raw: (u16, u8)) -> Self {
         Self { index: raw.0, port: raw.1 }
+    }
+}
+
+impl Display for Port {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}:{}]", self.index, self.port)
     }
 }
 
