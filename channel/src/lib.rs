@@ -109,4 +109,5 @@ pub mod eos;
 pub mod error;
 pub mod event;
 pub mod output;
+pub mod input;
 pub mod builder;
