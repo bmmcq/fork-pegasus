@@ -124,7 +124,7 @@ pub struct BufferPtr<D> {
     ptr: NonNull<BoundedBuffer<D>>,
 }
 
-unsafe impl <D: Send> Send for BufferPtr<D> { }
+unsafe impl<D: Send> Send for BufferPtr<D> {}
 
 impl<D> BufferPtr<D> {
     fn new(slot: BoundedBuffer<D>) -> Self {

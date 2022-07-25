@@ -2,6 +2,7 @@ use crate::data::Data;
 use crate::output::builder::SharedOutputBuild;
 use crate::output::delta::ScopeDelta;
 use crate::output::streaming::partition::PartitionRoute;
+use crate::Port;
 
 pub enum ChannelKind<T: Data> {
     Pipeline,
@@ -17,7 +18,6 @@ impl<T: Data> ChannelKind<T> {
 }
 
 pub struct ChannelBuilder<T: Data> {
-
     source: SharedOutputBuild<T>,
 
     batch_size: u16,
@@ -30,7 +30,6 @@ pub struct ChannelBuilder<T: Data> {
 }
 
 impl<T: Data> ChannelBuilder<T> {
-
     pub fn set_batch_size(&mut self, batch_size: u16) -> &mut Self {
         self.batch_size = batch_size;
         self
@@ -73,5 +72,9 @@ impl<T: Data> ChannelBuilder<T> {
 
     pub fn is_pipeline(&self) -> bool {
         self.kind.is_pipeline()
+    }
+
+    pub fn connect_to(self, _target: Port) {
+        todo!()
     }
 }

@@ -1,5 +1,3 @@
-
-
 //
 //! Copyright 2020 Alibaba Group Holding Limited.
 //!
@@ -17,13 +15,13 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+
 use crate::data::Data;
-use crate::output::{Output, OutputInfo};
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
 use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamPush;
+use crate::output::{Output, OutputInfo};
 use crate::Port;
-
 
 pub trait OutputBuilder {
     fn build(self: Box<Self>) -> Option<Box<dyn Output>>;
@@ -36,8 +34,7 @@ pub struct OutputBuilderImpl<D: Data> {
     push: Option<EnumStreamPush<D>>,
 }
 
-impl<D: Data> OutputBuilderImpl<D>
-{
+impl<D: Data> OutputBuilderImpl<D> {
     pub fn new(worker_index: u16, port: Port, scope_level: u8) -> Self {
         OutputBuilderImpl {
             worker_index,
@@ -64,12 +61,11 @@ impl<D: Data> OutputBuilderImpl<D>
     }
 }
 
-
 pub struct SharedOutputBuild<D: Data> {
-    inner: Rc<RefCell<OutputBuilderImpl<D>>>
+    inner: Rc<RefCell<OutputBuilderImpl<D>>>,
 }
 
-impl <D: Data> SharedOutputBuild<D> {
+impl<D: Data> SharedOutputBuild<D> {
     pub fn get_port(&self) -> Port {
         self.inner.borrow().get_port()
     }
@@ -91,9 +87,9 @@ impl <D: Data> SharedOutputBuild<D> {
     }
 }
 
-impl <D: Data> OutputBuilder for SharedOutputBuild<D>  {
+impl<D: Data> OutputBuilder for SharedOutputBuild<D> {
     fn build(self: Box<Self>) -> Option<Box<dyn Output>> {
-        let mut bm  = self.inner.borrow_mut();
+        let mut bm = self.inner.borrow_mut();
         let push = bm.push.take()?;
         let worker_index = self.inner.borrow().worker_index;
         if bm.info.scope_level == 0 {

@@ -4,7 +4,7 @@ use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
 use pegasus_common::tag::Tag;
 
 use crate::eos::Eos;
-use crate::{Port};
+use crate::Port;
 
 #[derive(Clone)]
 pub enum EventKind {

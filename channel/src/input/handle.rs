@@ -1,13 +1,16 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
+
 use ahash::AHashMap;
-use smallvec::SmallVec;
 use pegasus_common::tag::Tag;
+use smallvec::SmallVec;
+
 use crate::block::BlockGuard;
-use crate::{IOError, Pull};
 use crate::data::{Data, MiniScopeBatch};
+use crate::eos::Eos;
 use crate::error::IOResult;
 use crate::input::InputInfo;
+use crate::{IOError, Pull};
 
 pub enum PopEntry<T> {
     EOF,
@@ -16,23 +19,23 @@ pub enum PopEntry<T> {
 }
 
 pub struct InputHandle<T, P> {
-    is_exhaust : bool,
+    is_exhaust: bool,
     worker_index: u16,
     info: InputInfo,
     tag: Tag,
-    cache: Option<MiniScopeBatch<T>>,
+    cache: VecDeque<MiniScopeBatch<T>>,
     block: RefCell<SmallVec<[BlockGuard; 2]>>,
     input: P,
 }
 
-impl <T, P> InputHandle<T, P> {
+impl<T, P> InputHandle<T, P> {
     pub fn new(worker_index: u16, tag: Tag, info: InputInfo, input: P) -> Self {
         Self {
             is_exhaust: false,
             worker_index,
             info,
             tag,
-            cache: None,
+            cache: VecDeque::new(),
             block: RefCell::new(SmallVec::new()),
             input,
         }
@@ -43,13 +46,17 @@ impl <T, P> InputHandle<T, P> {
     }
 }
 
-impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
-
+impl<T, P> InputHandle<T, P>
+where
+    T: Data,
+    P: Pull<MiniScopeBatch<T>>,
+{
     pub fn pop(&mut self) -> Result<PopEntry<T>, IOError> {
         if self.is_exhaust {
             return Ok(PopEntry::EOF);
         }
 
+        // if it is in block, return not ready;
         if !self.block.borrow().is_empty() {
             let mut br = self.block.borrow_mut();
             br.retain(|b| b.is_blocked());
@@ -58,8 +65,7 @@ impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
             }
         }
 
-        if let Some(item) = self.cache.take() {
-            assert_eq!(item.tag, self.tag);
+        if let Some(item) = self.cache.pop_front() {
             return Ok(PopEntry::Ready(item));
         }
 
@@ -67,7 +73,7 @@ impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
             Ok(Some(b)) => {
                 assert_eq!(b.tag, self.tag);
                 Ok(PopEntry::Ready(b))
-            },
+            }
             Ok(None) => Ok(PopEntry::NotReady),
             Err(e) => {
                 if e.is_eof() {
@@ -94,13 +100,13 @@ impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
             }
         }
 
-        if self.cache.is_some() {
+        if !self.cache.is_empty() {
             return Ok(true);
         }
 
         match self.input.pull_next() {
             Ok(Some(item)) => {
-                self.cache = Some(item);
+                self.cache.push_back(item);
                 Ok(true)
             }
             Ok(None) => Ok(false),
@@ -121,6 +127,40 @@ impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
         self.block.borrow_mut().push(guard);
     }
 
+    pub fn notify_eos(&mut self, eos: Eos) -> IOResult<()> {
+        assert_eq!(self.tag, eos.tag);
+        assert!(!self.is_exhaust);
+
+        loop {
+            match self.input.pull_next() {
+                Ok(Some(b)) => {
+                    assert_eq!(b.tag, self.tag);
+                    self.cache.push_back(b);
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    if e.is_eof() {
+                        debug!("worker[{}]: input[{}] is exhausted; ", self.worker_index, self.info.port);
+                        break;
+                    } else {
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        if let Some(head) = self.cache.back_mut() {
+            head.set_end(eos);
+        } else {
+            let mut last = MiniScopeBatch::empty();
+            last.tag = self.tag.clone();
+            last.src = self.worker_index;
+            last.set_end(eos);
+            self.cache.push_back(last);
+        }
+        Ok(())
+    }
+
     pub fn is_block(&self, tag: &Tag) -> bool {
         assert_eq!(tag, &self.tag);
         let mut br = self.block.borrow_mut();
@@ -129,25 +169,19 @@ impl <T, P> InputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
     }
 
     pub fn is_exhaust(&self) -> bool {
-        self.is_exhaust && self.cache.is_none()
+        self.is_exhaust && self.cache.is_empty()
     }
 }
 
-
 struct Entry<T> {
     is_active: bool,
-    blocks: RefCell<SmallVec<[BlockGuard;2]>>,
+    blocks: RefCell<SmallVec<[BlockGuard; 2]>>,
     cache: VecDeque<MiniScopeBatch<T>>,
 }
 
-impl <T> Entry<T> {
-
+impl<T> Entry<T> {
     fn new() -> Self {
-        Self {
-            is_active: true,
-            blocks: RefCell::new(SmallVec::new()),
-            cache: VecDeque::new()
-        }
+        Self { is_active: true, blocks: RefCell::new(SmallVec::new()), cache: VecDeque::new() }
     }
 
     fn block(&self, guard: BlockGuard) {
@@ -169,7 +203,6 @@ impl <T> Entry<T> {
     }
 }
 
-
 pub struct MultiScopeInputHandle<T, P> {
     is_exhaust: bool,
     has_updated: bool,
@@ -177,11 +210,11 @@ pub struct MultiScopeInputHandle<T, P> {
     worker_index: u16,
     info: InputInfo,
     indexes: AHashMap<Tag, usize>,
-    cache : Vec<Entry<T>>,
+    cache: Vec<Entry<T>>,
     input: P,
 }
 
-impl <T, P> MultiScopeInputHandle<T, P>  {
+impl<T, P> MultiScopeInputHandle<T, P> {
     pub fn new(worker_index: u16, info: InputInfo, input: P) -> Self {
         Self {
             is_exhaust: false,
@@ -191,25 +224,47 @@ impl <T, P> MultiScopeInputHandle<T, P>  {
             info,
             indexes: AHashMap::new(),
             cache: Vec::new(),
-            input
+            input,
         }
     }
 
     pub fn info(&self) -> InputInfo {
         self.info
     }
+
+    fn add_new_entry_for_batch(&mut self, batch: MiniScopeBatch<T>) {
+        let mut offset = None;
+        for (i, entry) in self.cache.iter_mut().enumerate() {
+            if !entry.is_active {
+                assert!(entry.cache.is_empty());
+                entry.blocks.borrow_mut().clear();
+                offset = Some(i);
+                break;
+            }
+        }
+
+        if let Some(i) = offset {
+            // update index;
+            self.indexes.insert(batch.tag.clone(), i);
+            self.cache[i].cache.push_back(batch);
+        } else {
+            self.indexes
+                .insert(batch.tag.clone(), self.cache.len());
+            let mut e = Entry::new();
+            e.cache.push_back(batch);
+            self.cache.push(e);
+        }
+    }
 }
 
-impl <T, P> MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
-
+impl<T, P> MultiScopeInputHandle<T, P>
+where
+    T: Data,
+    P: Pull<MiniScopeBatch<T>>,
+{
     pub fn pop(&mut self) -> Result<PopEntry<T>, IOError> {
-
         if !self.has_updated {
-            return if self.is_exhaust() {
-                Ok(PopEntry::EOF)
-            } else {
-                Ok(PopEntry::NotReady)
-            }
+            return if self.is_exhaust() { Ok(PopEntry::EOF) } else { Ok(PopEntry::NotReady) };
         }
 
         while self.head < self.cache.len() {
@@ -225,7 +280,7 @@ impl <T, P> MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>
                         }
                         return Ok(PopEntry::Ready(v));
                     }
-                    None => ()
+                    None => (),
                 }
                 self.head += 1;
             }
@@ -249,27 +304,7 @@ impl <T, P> MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>
                     if let Some(offset) = self.indexes.get(v.tag()).copied() {
                         self.cache[offset].cache.push_back(v);
                     } else {
-                        let mut offset = None;
-                        'f: for (i, entry) in self.cache.iter_mut().enumerate() {
-                            if !entry.is_active {
-                                assert!(entry.cache.is_empty());
-                                entry.blocks.borrow_mut().clear();
-                                offset = Some(i);
-                                break 'f;
-                            }
-                        }
-
-                        if let Some(i) = offset {
-                            // update index;
-                            self.indexes.insert(v.tag.clone(), i);
-                            self.cache[i].cache.push_back(v);
-                        } else {
-                            self.indexes.insert(v.tag.clone(), self.cache.len());
-                            let mut e = Entry::new();
-                            e.cache.push_back(v);
-                            self.cache.push(e);
-                        }
-
+                        self.add_new_entry_for_batch(v);
                     }
                 }
                 Ok(None) => {
@@ -279,7 +314,7 @@ impl <T, P> MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>
                     if e.is_eof() {
                         debug!("worker[{}]: input[{}] is exhausted; ", self.worker_index, self.info.port);
                         self.is_exhaust = true;
-                        break
+                        break;
                     } else {
                         return Err(e);
                     }
@@ -311,15 +346,43 @@ impl <T, P> MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>
         }
     }
 
+    pub fn notify_eos(&mut self, eos: Eos) -> IOResult<()> {
+        assert_eq!(self.info.scope_level as usize, eos.tag.len());
+        self.check_ready()?;
+
+        if let Some(offset) = self.indexes.get(&eos.tag).copied() {
+            if let Some(back) = self.cache[offset].cache.back_mut() {
+                back.set_end(eos);
+            } else {
+                let mut back = MiniScopeBatch::empty();
+                back.tag = eos.tag.clone();
+                back.src = self.worker_index;
+                back.set_end(eos);
+                self.cache[offset].cache.push_back(back);
+            }
+        } else {
+            let mut last = MiniScopeBatch::empty();
+            last.tag = eos.tag.clone();
+            last.src = self.worker_index;
+            last.set_end(eos);
+            self.add_new_entry_for_batch(last);
+        }
+        Ok(())
+    }
+
     pub fn is_block(&self, tag: &Tag) -> bool {
-       if let Some(offset) = self.indexes.get(tag).copied() {
-           self.cache[offset].is_block()
-       } else {
-           false
-       }
+        if let Some(offset) = self.indexes.get(tag).copied() {
+            self.cache[offset].is_block()
+        } else {
+            false
+        }
     }
 
     pub fn is_exhaust(&self) -> bool {
-        self.is_exhaust && self.cache.iter().all(|e| !e.is_active && e.cache.is_empty() )
+        self.is_exhaust
+            && self
+                .cache
+                .iter()
+                .all(|e| !e.is_active && e.cache.is_empty())
     }
 }

@@ -14,6 +14,7 @@
 //! limitations under the License.
 
 use pegasus_common::downcast::AsAny;
+
 use crate::eos::Eos;
 use crate::error::IOResult;
 use crate::Port;
@@ -29,16 +30,16 @@ pub trait Output: Send {
 
     fn flush(&self) -> IOResult<()>;
 
-    fn notify_end(&self, end: Eos) -> IOResult<()>;
+    fn notify_eos(&self, end: Eos) -> IOResult<()>;
 
     fn close(&self) -> IOResult<()>;
 
     fn is_closed(&self) -> bool;
 }
 
-pub trait AnyOutput: AsAny + Output { }
+pub trait AnyOutput: AsAny + Output {}
 
-impl <T> AnyOutput for T where T: AsAny + Output { }
+impl<T> AnyOutput for T where T: AsAny + Output {}
 
 pub enum Rectifier {
     And(u64),

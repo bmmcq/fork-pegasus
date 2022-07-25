@@ -4,6 +4,7 @@ extern crate enum_dispatch;
 extern crate log;
 
 use std::fmt::{Display, Formatter};
+
 use crate::error::IOError;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default)]
@@ -111,10 +112,10 @@ pub mod abort;
 pub mod base;
 pub mod block;
 pub mod buffer;
+pub mod builder;
 pub mod data;
 pub mod eos;
 pub mod error;
 pub mod event;
-pub mod output;
 pub mod input;
-pub mod builder;
+pub mod output;

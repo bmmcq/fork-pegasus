@@ -12,13 +12,18 @@ pub struct OutputProxy<D: Data>(RefCell<OutputHandle<D, EnumStreamPush<D>>>);
 pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, EnumStreamPush<D>>>);
 
 impl<D: Data> OutputProxy<D> {
-    pub fn new(worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>) -> Self {
+    pub fn new(
+        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>,
+    ) -> Self {
         let handle = OutputHandle::new(worker_index, info, delta, output);
         Self(RefCell::new(handle))
     }
 
     pub fn downcast(output: &Box<dyn AnyOutput>) -> Option<RefMut<OutputHandle<D, EnumStreamPush<D>>>> {
-        output.as_any_ref().downcast_ref::<Self>().map(|op| op.0.borrow_mut())
+        output
+            .as_any_ref()
+            .downcast_ref::<Self>()
+            .map(|op| op.0.borrow_mut())
     }
 }
 
@@ -31,7 +36,7 @@ impl<D: Data> Output for OutputProxy<D> {
         self.0.borrow_mut().flush()
     }
 
-    fn notify_end(&self, end: Eos) -> IOResult<()> {
+    fn notify_eos(&self, end: Eos) -> IOResult<()> {
         self.0.borrow_mut().notify_end(end)
     }
 
@@ -45,13 +50,20 @@ impl<D: Data> Output for OutputProxy<D> {
 }
 
 impl<D: Data> MultiScopeOutputProxy<D> {
-    pub fn new(worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>) -> Self {
+    pub fn new(
+        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>,
+    ) -> Self {
         let handle = MultiScopeOutputHandle::new(worker_index, info, delta, output);
         Self(RefCell::new(handle))
     }
 
-    pub fn downcast(output: &Box<dyn AnyOutput>) -> Option<RefMut<MultiScopeOutputHandle<D, EnumStreamPush<D>>>> {
-        output.as_any_ref().downcast_ref::<Self>().map(|op| op.0.borrow_mut())
+    pub fn downcast(
+        output: &Box<dyn AnyOutput>,
+    ) -> Option<RefMut<MultiScopeOutputHandle<D, EnumStreamPush<D>>>> {
+        output
+            .as_any_ref()
+            .downcast_ref::<Self>()
+            .map(|op| op.0.borrow_mut())
     }
 }
 
@@ -64,7 +76,7 @@ impl<D: Data> Output for MultiScopeOutputProxy<D> {
         self.0.borrow_mut().flush()
     }
 
-    fn notify_end(&self, end: Eos) -> IOResult<()> {
+    fn notify_eos(&self, end: Eos) -> IOResult<()> {
         self.0.borrow_mut().notify_end(end)
     }
 
