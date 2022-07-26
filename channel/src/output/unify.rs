@@ -15,7 +15,7 @@ use crate::ChannelInfo;
 pub type BaseBatchPush<T> = BasePush<MiniScopeBatch<T>>;
 pub type BaseEventedBathPush<T> = EventEosBatchPush<T, BaseBatchPush<T>, BasePush<Event>>;
 
-pub enum EnumStreamPush<T: Data> {
+pub enum EnumStreamBufPush<T: Data> {
     Pipeline(BufStreamPush<T, BaseBatchPush<T>>),
     MultiScopePipeline(MultiScopeBufStreamPush<T, BaseBatchPush<T>>),
     Exchange(PartitionStreamPush<T, BufStreamPush<T, BaseEventedBathPush<T>>>),
@@ -25,7 +25,7 @@ pub enum EnumStreamPush<T: Data> {
     AggregateByScope(MultiScopeBufStreamPush<T, AggregateByScopePush<T, BaseEventedBathPush<T>>>),
 }
 
-impl<T: Data> EnumStreamPush<T> {
+impl<T: Data> EnumStreamBufPush<T> {
     pub fn pipeline(worker_index: u16, ch_info: ChannelInfo, tag: Tag, push: BaseBatchPush<T>) -> Self {
         let push = BufStreamPush::new(ch_info, worker_index, tag, push);
         Self::Pipeline(push)
@@ -39,102 +39,102 @@ impl<T: Data> EnumStreamPush<T> {
     }
 }
 
-impl<T: Data> Pinnable for EnumStreamPush<T> {
+impl<T: Data> Pinnable for EnumStreamBufPush<T> {
     fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.pin(tag),
-            EnumStreamPush::MultiScopePipeline(p) => p.pin(tag),
-            EnumStreamPush::Exchange(p) => p.pin(tag),
-            EnumStreamPush::MultiScopeExchange(p) => p.pin(tag),
-            EnumStreamPush::Aggregate(p) => p.pin(tag),
-            EnumStreamPush::MultiScopeAggregate(p) => p.pin(tag),
-            EnumStreamPush::AggregateByScope(p) => p.pin(tag),
+            EnumStreamBufPush::Pipeline(p) => p.pin(tag),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.pin(tag),
+            EnumStreamBufPush::Exchange(p) => p.pin(tag),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.pin(tag),
+            EnumStreamBufPush::Aggregate(p) => p.pin(tag),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.pin(tag),
+            EnumStreamBufPush::AggregateByScope(p) => p.pin(tag),
         }
     }
 
     fn unpin(&mut self) -> IOResult<()> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.unpin(),
-            EnumStreamPush::MultiScopePipeline(p) => p.unpin(),
-            EnumStreamPush::Exchange(p) => p.unpin(),
-            EnumStreamPush::MultiScopeExchange(p) => p.unpin(),
-            EnumStreamPush::Aggregate(p) => p.unpin(),
-            EnumStreamPush::MultiScopeAggregate(p) => p.unpin(),
-            EnumStreamPush::AggregateByScope(p) => p.unpin(),
+            EnumStreamBufPush::Pipeline(p) => p.unpin(),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.unpin(),
+            EnumStreamBufPush::Exchange(p) => p.unpin(),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.unpin(),
+            EnumStreamBufPush::Aggregate(p) => p.unpin(),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.unpin(),
+            EnumStreamBufPush::AggregateByScope(p) => p.unpin(),
         }
     }
 }
 
-impl<T: Data> StreamPush<T> for EnumStreamPush<T> {
+impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
     fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.push(tag, msg),
-            EnumStreamPush::MultiScopePipeline(p) => p.push(tag, msg),
-            EnumStreamPush::Exchange(p) => p.push(tag, msg),
-            EnumStreamPush::MultiScopeExchange(p) => p.push(tag, msg),
-            EnumStreamPush::Aggregate(p) => p.push(tag, msg),
-            EnumStreamPush::MultiScopeAggregate(p) => p.push(tag, msg),
-            EnumStreamPush::AggregateByScope(p) => p.push(tag, msg),
+            EnumStreamBufPush::Pipeline(p) => p.push(tag, msg),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.push(tag, msg),
+            EnumStreamBufPush::Exchange(p) => p.push(tag, msg),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.push(tag, msg),
+            EnumStreamBufPush::Aggregate(p) => p.push(tag, msg),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.push(tag, msg),
+            EnumStreamBufPush::AggregateByScope(p) => p.push(tag, msg),
         }
     }
 
     fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.push_last(msg, end),
-            EnumStreamPush::MultiScopePipeline(p) => p.push_last(msg, end),
-            EnumStreamPush::Exchange(p) => p.push_last(msg, end),
-            EnumStreamPush::MultiScopeExchange(p) => p.push_last(msg, end),
-            EnumStreamPush::Aggregate(p) => p.push_last(msg, end),
-            EnumStreamPush::MultiScopeAggregate(p) => p.push_last(msg, end),
-            EnumStreamPush::AggregateByScope(p) => p.push_last(msg, end),
+            EnumStreamBufPush::Pipeline(p) => p.push_last(msg, end),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.push_last(msg, end),
+            EnumStreamBufPush::Exchange(p) => p.push_last(msg, end),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.push_last(msg, end),
+            EnumStreamBufPush::Aggregate(p) => p.push_last(msg, end),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.push_last(msg, end),
+            EnumStreamBufPush::AggregateByScope(p) => p.push_last(msg, end),
         }
     }
 
     fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.push_iter(tag, iter),
-            EnumStreamPush::MultiScopePipeline(p) => p.push_iter(tag, iter),
-            EnumStreamPush::Exchange(p) => p.push_iter(tag, iter),
-            EnumStreamPush::MultiScopeExchange(p) => p.push_iter(tag, iter),
-            EnumStreamPush::Aggregate(p) => p.push_iter(tag, iter),
-            EnumStreamPush::MultiScopeAggregate(p) => p.push_iter(tag, iter),
-            EnumStreamPush::AggregateByScope(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::Pipeline(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::Exchange(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::Aggregate(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.push_iter(tag, iter),
+            EnumStreamBufPush::AggregateByScope(p) => p.push_iter(tag, iter),
         }
     }
 
     fn notify_end(&mut self, end: Eos) -> IOResult<()> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.notify_end(end),
-            EnumStreamPush::MultiScopePipeline(p) => p.notify_end(end),
-            EnumStreamPush::Exchange(p) => p.notify_end(end),
-            EnumStreamPush::MultiScopeExchange(p) => p.notify_end(end),
-            EnumStreamPush::Aggregate(p) => p.notify_end(end),
-            EnumStreamPush::MultiScopeAggregate(p) => p.notify_end(end),
-            EnumStreamPush::AggregateByScope(p) => p.notify_end(end),
+            EnumStreamBufPush::Pipeline(p) => p.notify_end(end),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.notify_end(end),
+            EnumStreamBufPush::Exchange(p) => p.notify_end(end),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.notify_end(end),
+            EnumStreamBufPush::Aggregate(p) => p.notify_end(end),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.notify_end(end),
+            EnumStreamBufPush::AggregateByScope(p) => p.notify_end(end),
         }
     }
 
     fn flush(&mut self) -> IOResult<()> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.flush(),
-            EnumStreamPush::MultiScopePipeline(p) => p.flush(),
-            EnumStreamPush::Exchange(p) => p.flush(),
-            EnumStreamPush::MultiScopeExchange(p) => p.flush(),
-            EnumStreamPush::Aggregate(p) => p.flush(),
-            EnumStreamPush::MultiScopeAggregate(p) => p.flush(),
-            EnumStreamPush::AggregateByScope(p) => p.flush(),
+            EnumStreamBufPush::Pipeline(p) => p.flush(),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.flush(),
+            EnumStreamBufPush::Exchange(p) => p.flush(),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.flush(),
+            EnumStreamBufPush::Aggregate(p) => p.flush(),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.flush(),
+            EnumStreamBufPush::AggregateByScope(p) => p.flush(),
         }
     }
 
     fn close(&mut self) -> IOResult<()> {
         match self {
-            EnumStreamPush::Pipeline(p) => p.close(),
-            EnumStreamPush::MultiScopePipeline(p) => p.close(),
-            EnumStreamPush::Exchange(p) => p.close(),
-            EnumStreamPush::MultiScopeExchange(p) => p.close(),
-            EnumStreamPush::Aggregate(p) => p.close(),
-            EnumStreamPush::MultiScopeAggregate(p) => p.close(),
-            EnumStreamPush::AggregateByScope(p) => p.close(),
+            EnumStreamBufPush::Pipeline(p) => p.close(),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.close(),
+            EnumStreamBufPush::Exchange(p) => p.close(),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.close(),
+            EnumStreamBufPush::Aggregate(p) => p.close(),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.close(),
+            EnumStreamBufPush::AggregateByScope(p) => p.close(),
         }
     }
 }

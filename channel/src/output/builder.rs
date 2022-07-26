@@ -19,7 +19,7 @@ use std::rc::Rc;
 use crate::data::Data;
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
 use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
-use crate::output::unify::EnumStreamPush;
+use crate::output::unify::EnumStreamBufPush;
 use crate::output::{Output, OutputInfo};
 use crate::Port;
 
@@ -31,7 +31,7 @@ pub struct OutputBuilderImpl<D: Data> {
     worker_index: u16,
     info: OutputInfo,
     delta: MergedScopeDelta,
-    push: Option<EnumStreamPush<D>>,
+    push: Option<EnumStreamBufPush<D>>,
 }
 
 impl<D: Data> OutputBuilderImpl<D> {
@@ -52,7 +52,7 @@ impl<D: Data> OutputBuilderImpl<D> {
         self.info.scope_level
     }
 
-    pub fn set_push(&mut self, push: EnumStreamPush<D>) {
+    pub fn set_push(&mut self, push: EnumStreamBufPush<D>) {
         self.push = Some(push);
     }
 
@@ -74,7 +74,7 @@ impl<D: Data> SharedOutputBuild<D> {
         self.inner.borrow().get_scope_level()
     }
 
-    pub fn set_push(&self, push: EnumStreamPush<D>) {
+    pub fn set_push(&self, push: EnumStreamBufPush<D>) {
         self.inner.borrow_mut().set_push(push)
     }
 

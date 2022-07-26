@@ -5,21 +5,21 @@ use crate::eos::Eos;
 use crate::error::IOResult;
 use crate::output::delta::MergedScopeDelta;
 use crate::output::handle::{MultiScopeOutputHandle, OutputHandle};
-use crate::output::unify::EnumStreamPush;
+use crate::output::unify::EnumStreamBufPush;
 use crate::output::{AnyOutput, Output, OutputInfo};
 
-pub struct OutputProxy<D: Data>(RefCell<OutputHandle<D, EnumStreamPush<D>>>);
-pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, EnumStreamPush<D>>>);
+pub struct OutputProxy<D: Data>(RefCell<OutputHandle<D, EnumStreamBufPush<D>>>);
+pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, EnumStreamBufPush<D>>>);
 
 impl<D: Data> OutputProxy<D> {
     pub fn new(
-        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>,
+        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamBufPush<D>,
     ) -> Self {
         let handle = OutputHandle::new(worker_index, info, delta, output);
         Self(RefCell::new(handle))
     }
 
-    pub fn downcast(output: &Box<dyn AnyOutput>) -> Option<RefMut<OutputHandle<D, EnumStreamPush<D>>>> {
+    pub fn downcast(output: &Box<dyn AnyOutput>) -> Option<RefMut<OutputHandle<D, EnumStreamBufPush<D>>>> {
         output
             .as_any_ref()
             .downcast_ref::<Self>()
@@ -51,7 +51,7 @@ impl<D: Data> Output for OutputProxy<D> {
 
 impl<D: Data> MultiScopeOutputProxy<D> {
     pub fn new(
-        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamPush<D>,
+        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamBufPush<D>,
     ) -> Self {
         let handle = MultiScopeOutputHandle::new(worker_index, info, delta, output);
         Self(RefCell::new(handle))
@@ -59,7 +59,7 @@ impl<D: Data> MultiScopeOutputProxy<D> {
 
     pub fn downcast(
         output: &Box<dyn AnyOutput>,
-    ) -> Option<RefMut<MultiScopeOutputHandle<D, EnumStreamPush<D>>>> {
+    ) -> Option<RefMut<MultiScopeOutputHandle<D, EnumStreamBufPush<D>>>> {
         output
             .as_any_ref()
             .downcast_ref::<Self>()

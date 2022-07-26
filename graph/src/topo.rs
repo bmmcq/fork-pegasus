@@ -10,6 +10,7 @@ pub struct IdTopo<B: Deref<Target = [u64]>> {
 
 impl<B: Deref<Target = [u64]>> IdTopo<B> {
     pub fn new(vertices: IntMap<u64, (u64, u64)>, neighbors: B) -> Self {
+        println!("{:?}", neighbors.deref());
         IdTopo { vertices, neighbors }
     }
 

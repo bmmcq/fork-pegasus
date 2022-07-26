@@ -138,7 +138,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
                         .parse::<u64>()
                         .expect("error source id format");
                     if filter(&src) {
-                        vertices.insert(src, (0, 0));
+                        // vertices.insert(src, (0, 0));
                         let targets = edges.entry(src).or_insert_with(Vec::new);
                         for i in dst_indexes.iter() {
                             if let Some(d) = tmp.get::<usize>(*i) {
@@ -146,7 +146,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
                                     .parse::<u64>()
                                     .expect("error target id format");
                                 targets.push(dst);
-                                vertices.insert(dst, (0, 0));
+                               //vertices.insert(dst, (0, 0));
                                 count += 1;
                             } else {
                                 panic!("error format line : {}", e);
@@ -176,6 +176,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
         offset += edges.len();
         neighbors.extend(edges);
     }
+    println!("{:?}",neighbors);
 
     let mut vertex_vec = Vec::with_capacity(vertices.len());
     for (id, (mut idx, len)) in vertices {
@@ -255,6 +256,9 @@ impl Deref for NeighborsBackend {
 
     fn deref(&self) -> &Self::Target {
         let ptr = self.mmap.as_ptr() as *const u64;
-        unsafe { std::slice::from_raw_parts(ptr, self.len) }
+        unsafe {
+            let ptr = ptr.add(1);
+            std::slice::from_raw_parts(ptr, self.len)
+        }
     }
 }
