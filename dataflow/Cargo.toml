@@ -1,0 +1,9 @@
+[package]
+name = "pegasus_dataflow"
+version = "1.0.0"
+edition = "2021"
+
+
+[dependencies]
+pegasus_common = { path = "../common" }
+pegasus_channel = { path = "../channel" }
