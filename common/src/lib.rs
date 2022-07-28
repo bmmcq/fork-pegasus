@@ -20,6 +20,7 @@ pub mod bytes;
 pub mod channel;
 pub mod codec;
 pub mod collections;
+pub mod config;
 pub mod downcast;
 pub mod io;
 pub mod logs;

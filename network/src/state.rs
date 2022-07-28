@@ -52,8 +52,8 @@ pub fn add_connection(local_id: u64, remote_id: u64, addr: SocketAddr) -> Option
                 *s = st;
             } else {
                 error!(
-                    "add connection to server[id={},addr={:?}] been refused, \
-                server[id={},addr={:?}] is in use;",
+                    "add connection to service[id={},addr={:?}] been refused, \
+                service[id={},addr={:?}] is in use;",
                     remote_id, addr, s.remote_id, s.addr
                 );
                 return None;

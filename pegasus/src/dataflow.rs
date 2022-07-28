@@ -13,39 +13,43 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::any::Any;
 use std::cell::RefCell;
-use std::collections::VecDeque;
+use std::collections::{LinkedList, VecDeque};
 use std::fmt::Write;
 use std::fs::File;
 use std::rc::Rc;
 use std::sync::Arc;
+use nohash_hasher::IntMap;
+use pegasus_channel::event::emitter::BaseEventEmitter;
 
 use crate::api::meta::OperatorInfo;
-use crate::channel_id::ChannelInfo;
-use crate::channel::output::OutputBuilderImpl;
-use crate::data::MicroBatch;
-use crate::data_plane::{DataPlanePull, DataPlanePush};
 use crate::errors::{BuildJobError, IOResult, JobExecError};
-use crate::event::emitter::EventEmitter;
-use crate::graph::{Dependency, DotGraph, Edge, Port};
+use crate::graph::{Dependency, DotGraph, Edge};
 use crate::operator::{GeneralOperator, NotifiableOperator, Operator, OperatorBuilder, OperatorCore};
 use crate::schedule::Schedule;
-use crate::{Data, JobConf, Tag, WorkerId};
+use crate::{JobConf, WorkerId};
+
+pub struct ChannelAllocator {
+    channel: Rc<RefCell<IntMap<u16, LinkedList<Box<dyn Any>>>>>
+}
 
 pub struct DataflowBuilder {
-    pub worker_id: WorkerId,
-    pub config: Arc<JobConf>,
-    pub(crate) event_emitter: EventEmitter,
+    index: u8,
+    config: Arc<JobConf>,
+    event_emitter: BaseEventEmitter,
     ch_index: Rc<RefCell<u32>>,
+    channel_alloc : ChannelAllocator,
     operators: Rc<RefCell<Vec<OperatorBuilder>>>,
     edges: Rc<RefCell<Vec<Edge>>>,
     sinks: Rc<RefCell<Vec<usize>>>,
 }
 
 impl DataflowBuilder {
-    pub(crate) fn new(worker_id: WorkerId, event_emitter: EventEmitter, config: &Arc<JobConf>) -> Self {
+    pub(crate) fn new(index: u8, config: &Arc<JobConf>) -> Self {
+
         DataflowBuilder {
-            worker_id,
+            index,
             config: config.clone(),
             operators: Rc::new(RefCell::new(vec![])),
             edges: Rc::new(RefCell::new(vec![])),

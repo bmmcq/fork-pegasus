@@ -26,15 +26,16 @@ pub enum EnumStreamBufPush<T: Data> {
 }
 
 impl<T: Data> EnumStreamBufPush<T> {
+    
     pub fn pipeline(worker_index: u16, ch_info: ChannelInfo, tag: Tag, push: BaseBatchPush<T>) -> Self {
         let push = BufStreamPush::new(ch_info, worker_index, tag, push);
         Self::Pipeline(push)
     }
 
     pub fn multi_scope_pipeline(
-        worker_index: u16, ch_info: ChannelInfo, max_concurrent_scopes: u16, push: BaseBatchPush<T>,
+        worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
     ) -> Self {
-        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, max_concurrent_scopes, push);
+        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, push);
         Self::MultiScopePipeline(push)
     }
 }

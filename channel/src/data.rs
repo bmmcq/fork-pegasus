@@ -1,16 +1,16 @@
 use std::fmt::Debug;
 
-use pegasus_common::codec::{Codec, Decode, Encode};
 use pegasus_common::io::{ReadExt, WriteExt};
 use pegasus_common::tag::Tag;
+use pegasus_server::{Decode, Encode};
 
 use crate::buffer::batch::{RoBatch, WoBatch};
 use crate::eos::Eos;
 
 /// The constraint of data that can be delivered through the channel;
-pub trait Data: Send + Codec + 'static {}
+pub trait Data: Send + Encode + Decode + 'static {}
 
-impl<T: Send + Codec + 'static> Data for T {}
+impl<T: Send + Encode + Decode + 'static> Data for T {}
 
 pub struct Item<T> {
     pub tag: Tag,

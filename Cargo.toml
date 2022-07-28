@@ -2,12 +2,14 @@
 members = [
     "common",
     "memory",
+    "server",
     "network",
     "channel",
     "executor",
     "graph",
-    "pegasus",
-    "server",
+    #"pegasus",
+    "dataflow",
+    #"service",
 ]
 
 [profile.dev]

@@ -4,7 +4,7 @@ use pegasus::JobConf;
 use pegasus_benchmark::graph::{Graph, TodoGraph};
 use pegasus_benchmark::queries;
 
-/// start rpc server to serve online queries;
+/// start rpc service to serve online queries;
 fn main() {
     // just for compile
     let graph = load_graph::<TodoGraph>();

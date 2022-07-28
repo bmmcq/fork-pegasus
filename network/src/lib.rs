@@ -40,7 +40,7 @@ lazy_static! {
 pub fn start_up<D: ServerDetect + 'static, A: ToSocketAddrs>(
     server_id: u64, conf: ConnectionParams, addr: A, detect: D,
 ) -> Result<SocketAddr, NetError> {
-    info!("start server {} ...", server_id);
+    info!("start service {} ...", server_id);
     let mut mgr = manager::ServerManager::new(server_id, conf, detect);
     {
         let mut lock = SHUTDOWN_HOOK
@@ -71,7 +71,7 @@ pub fn start_up<D: ServerDetect + 'static, A: ToSocketAddrs>(
 
 #[inline]
 pub fn shutdown(server_id: u64) {
-    info!("server {} shutdown...", server_id);
+    info!("service {} shutdown...", server_id);
     let mut lock = SHUTDOWN_HOOK
         .write()
         .expect("SHUTDOWN_HOOK write lock failure;");

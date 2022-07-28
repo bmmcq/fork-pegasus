@@ -35,7 +35,7 @@ struct Config {
     concurrent: u32,
     #[structopt(short = "b", default_value = "64")]
     batch_capacity: u32,
-    /// path of config file with server addresses
+    /// path of config file with service addresses
     #[structopt(short = "s", long = "servers")]
     servers: Option<PathBuf>,
 }

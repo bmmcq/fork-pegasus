@@ -118,7 +118,7 @@ pub fn register_remotes_receiver<T: Decode + 'static>(
             if let Some(register) = lock.get(&(local, *id)) {
                 register.register(channel_id, &tx)?;
             } else {
-                error!("server with id = {} is not connect;", id);
+                error!("service with id = {} is not connect;", id);
                 return Err(NetError::NotConnected(*id));
             }
         }
@@ -147,7 +147,7 @@ pub fn start_net_receiver(
         .spawn(move || {
             while !crate::is_shutdown(local) {
                 if let Err(e) = net_recv.recv() {
-                    error!("fail to read data from server {:?}, caused by {:?};", remote, e);
+                    error!("fail to read data from service {:?}, caused by {:?};", remote, e);
                     break;
                 }
             }

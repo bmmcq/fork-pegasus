@@ -1,9 +1,9 @@
-# Set ip address the RPC server will start;
+# Set ip address the RPC service will start;
 # It is set to "0.0.0.0" by default;
 rpc_host = "127.0.0.1"
 # Set port the RPC service will listen on;
 # It is set to 0 use random port by default;
-rpc_port = 5001
+rpc_port = 5000
 
 # Set the concurrency limit applied to on requests inbound per connection.
 #rpc_concurrency_limit_per_connection = 32

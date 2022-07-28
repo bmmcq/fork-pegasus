@@ -150,7 +150,7 @@ impl CachedConns {
             if addr == self.server_addr {
                 return Ok(self.conns.pop_front().unwrap());
             }
-            debug!("update server[{}] address from {} to {};", self.server_id, self.server_addr, addr);
+            debug!("update service[{}] address from {} to {};", self.server_id, self.server_addr, addr);
             self.server_addr = addr;
             self.conns.clear();
         }
@@ -158,7 +158,7 @@ impl CachedConns {
         if self.last_check_time.elapsed().as_secs() >= 5 {
             let addr = fetch_latest_addr(self.server_id)?;
             if self.server_addr != addr {
-                debug!("update server[{}] address from {} to {};", self.server_id, self.server_addr, addr);
+                debug!("update service[{}] address from {} to {};", self.server_id, self.server_addr, addr);
                 self.server_addr = addr;
             }
             self.last_check_time = Instant::now();
@@ -176,12 +176,12 @@ impl CachedConns {
         let url = format!("http://{}:{}", self.server_addr.ip(), self.server_addr.port());
         match JobServiceClient::connect(url).await {
             Ok(client) => {
-                debug!("create new connection to server[{}] at {};", self.server_id, self.server_addr);
+                debug!("create new connection to service[{}] at {};", self.server_id, self.server_addr);
                 Ok(Connection { server_id: self.server_id, server_addr: self.server_addr, client })
             }
             Err(e) => {
                 error!(
-                    "can't create connection to server {} at {}: {}",
+                    "can't create connection to service {} at {}: {}",
                     self.server_id, self.server_addr, e
                 );
                 Err(ConnectError::FailConnect(self.server_id, e))

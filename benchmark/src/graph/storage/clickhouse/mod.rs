@@ -77,7 +77,7 @@ pub enum Type {
     /// Not supported
     Array(Box<Type>),
 
-    // unused (server never sends this)
+    // unused (service never sends this)
     // Nested(IndexMap<String, Type>),
     Tuple(Vec<Type>),
 

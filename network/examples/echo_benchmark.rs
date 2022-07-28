@@ -90,7 +90,7 @@ fn main() {
     }
 
     let addr = pegasus_network::start_up(config.server_id, params, addr, peers).unwrap();
-    println!("echo-benchmark: server {} start on {:?};", config.server_id, addr);
+    println!("echo-benchmark: service {} start on {:?};", config.server_id, addr);
 
     while !pegasus_network::check_connect(config.server_id, &remotes) {
         std::thread::sleep(Duration::from_secs(1));

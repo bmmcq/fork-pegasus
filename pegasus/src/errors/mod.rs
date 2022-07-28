@@ -155,7 +155,7 @@ impl Debug for BuildJobError {
         match self {
             BuildJobError::Unsupported(msg) => write!(f, "unsupported combination: {}", msg),
             BuildJobError::UserError(e) => write!(f, "user defined error: {}", e),
-            BuildJobError::ServerError(e) => write!(f, "server error: {}", e),
+            BuildJobError::ServerError(e) => write!(f, "service error: {}", e),
         }
     }
 }
@@ -276,7 +276,7 @@ impl Display for StartupError {
             StartupError::Network(e) => {
                 write!(f, "startup failure, caused by network error: {:?}", e)
             }
-            StartupError::AlreadyStarted(id) => write!(f, "server {} has already started;", id),
+            StartupError::AlreadyStarted(id) => write!(f, "service {} has already started;", id),
         }
     }
 }

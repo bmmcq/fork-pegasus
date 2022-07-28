@@ -18,25 +18,9 @@ use std::borrow::Cow;
 use dot::LabelText::LabelStr;
 use dot::{Edges, Id, LabelText, Nodes};
 
-use crate::channel_id::ChannelInfo;
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Default)]
-pub struct Port {
-    pub index: usize,
-    pub port: usize,
-}
 
-impl Port {
-    pub fn new(index: usize, port: usize) -> Self {
-        Port { index, port }
-    }
-}
 
-impl ::std::fmt::Debug for Port {
-    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
-        write!(f, "({}.{})", self.index, self.port)
-    }
-}
 
 /// Edge representation in the direct cycle graph;
 #[derive(Copy, Clone)]

@@ -96,7 +96,7 @@ fn mock_process_0(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
         .spawn(move || {
             let detector = MockServerDetect { servers };
             let addr = pegasus_network::start_up(0, conf, "127.0.0.1:1234", detector).unwrap();
-            info!("server 0 start at {:?}", addr);
+            info!("service 0 start at {:?}", addr);
             let remotes = vec![1, 2];
             while !pegasus_network::check_connect(0, &remotes) {
                 std::thread::sleep(Duration::from_secs(1));
@@ -141,7 +141,7 @@ fn mock_process_1(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
         .spawn(move || {
             let detector = MockServerDetect { servers };
             let addr = pegasus_network::start_up(1, conf, "127.0.0.1:1235", detector).unwrap();
-            info!("server 1 start at {:?}", addr);
+            info!("service 1 start at {:?}", addr);
             let remotes = vec![0, 2];
 
             while !pegasus_network::check_connect(1, &remotes) {
@@ -188,7 +188,7 @@ fn mock_process_2(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
         .spawn(move || {
             let detector = MockServerDetect { servers };
             let addr = pegasus_network::start_up(2, conf, "127.0.0.1:1236", detector).unwrap();
-            info!("server 2 start at {:?}", addr);
+            info!("service 2 start at {:?}", addr);
             let remotes = vec![0, 1];
             while !pegasus_network::check_connect(2, &remotes) {
                 std::thread::sleep(Duration::from_secs(1));

@@ -154,7 +154,7 @@ pub struct BatchPool<T> {
 
 impl<T> BatchPool<T> {
     pub fn new(batch_size: u16, capacity: u16) -> Self {
-        let (recycle, pool) = crossbeam_channel::unbounded();
+        let (recycle, pool) = crossbeam_channel::bounded(capacity as usize);
         Self { batch_size, capacity, alloc_guard: 0, pool, recycle }
     }
 

@@ -20,30 +20,21 @@ use std::fmt::Debug;
 pub struct WorkerId {
     /// The sequence number of the job this worker belongs to;
     pub job_id: u64,
-    /// The number of total worker peers this job consist of;
-    pub local_peers: u16,
+    /// The number of workers of this job in current service;
+    pub local_peers: u8,
     /// The index of this worker among all peers;
     pub index: u16,
-    /// The id of current server;
-    pub server_id: u8,
-    /// The index of current server;
-    pub server_index: u8,
-    /// The total servers this job has;
-    pub servers: u8,
-    /// Indicates that if trace is enabled;
-    pub trace_enable: bool,
+
+    pub server_size: u8
 }
 
 impl WorkerId {
-    pub fn new(
-        job_id: u64, local_peers: u16, index: u16, server_id: u8, server_index: u8, servers: u8,
-        trace: bool,
-    ) -> Self {
-        WorkerId { job_id, local_peers, index, server_id, server_index, servers, trace_enable: trace }
+    pub fn new(job_id: u64, local_peers: u8, index: u16, server_size: u8) -> Self {
+        WorkerId { job_id, local_peers, index, server_size }
     }
 
     pub fn total_peers(&self) -> u16 {
-        self.local_peers * self.servers
+        self.local_peers * self.server_size
     }
 }
 
@@ -60,56 +51,6 @@ impl PartialEq for WorkerId {
 }
 
 impl Eq for WorkerId {}
-
-pub struct WorkerIdIter {
-    job_id: u64,
-    local_peers: u16,
-    server_id: u8,
-    server_index: u8,
-    servers: u8,
-    trace_enable: bool,
-    cursor: u16,
-    last: u16,
-}
-
-impl WorkerIdIter {
-    pub fn new(job_id: u64, local_peers: u16, server_id: u8, server_index: u8, servers: u8) -> Self {
-        let cursor = server_index as u16 * local_peers;
-        let last = cursor + local_peers;
-        WorkerIdIter {
-            job_id,
-            local_peers,
-            server_id,
-            server_index,
-            servers,
-            trace_enable: false,
-            cursor,
-            last,
-        }
-    }
-}
-
-impl Iterator for WorkerIdIter {
-    type Item = WorkerId;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.cursor == self.last {
-            None
-        } else {
-            let next = WorkerId::new(
-                self.job_id,
-                self.local_peers,
-                self.cursor,
-                self.server_id,
-                self.server_index,
-                self.servers,
-                self.trace_enable,
-            );
-            self.cursor += 1;
-            Some(next)
-        }
-    }
-}
 
 thread_local! {
     pub static CURRENT_WORKER : Cell<Option<WorkerId>> = Cell::new(None)

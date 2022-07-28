@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Generate server.toml for pegasus test
+# Generate service.toml for pegasus test
 echo "[network]" >> server.toml
 echo "server_id = ${HOSTNAME##*-}" >> server.toml
 echo "ip = $(hostname -I)" >> server.toml

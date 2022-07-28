@@ -13,32 +13,30 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use crate::channel::output::OutputBuilderImpl;
+use pegasus_channel::data::Data;
 use crate::dataflow::DataflowBuilder;
 use crate::errors::BuildJobError;
 use crate::stream::Stream;
-use crate::Data;
 
 pub trait IntoDataflow<D: Data> {
     fn into_dataflow(self, entry: Stream<D>) -> Result<Stream<D>, BuildJobError>;
 }
 
-pub struct Source<D: Data> {
-    output: OutputBuilderImpl<D>,
+pub struct Source {
     dfb: DataflowBuilder,
 }
 
-impl<D: Data> Source<D> {
-    pub(crate) fn new(output: OutputBuilderImpl<D>, dfb: &DataflowBuilder) -> Self {
-        Source { output, dfb: dfb.clone() }
+impl Source {
+    pub fn new( dfb: &DataflowBuilder) -> Self {
+        Source { dfb: dfb.clone() }
     }
 
-    pub fn input_from<I>(self, source: I) -> Result<Stream<D>, BuildJobError>
+    pub fn input_from<I, D>(self, source: I) -> Result<Stream<D>, BuildJobError>
     where
+        D: Data,
         I: IntoIterator<Item = D>,
         I::IntoIter: Send + 'static,
     {
-        let stream = Stream::new(self.output, &self.dfb);
         source.into_dataflow(stream)
     }
 

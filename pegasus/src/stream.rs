@@ -15,54 +15,53 @@
 
 use std::fmt::{Debug, Formatter};
 use std::sync::Arc;
+use pegasus_channel::alloc::ChannelKind;
+use pegasus_channel::data::Data;
+use pegasus_channel::output::builder::SharedOutputBuilder;
+use pegasus_channel::Port;
 
 use pegasus_common::codec::ShadeCodec;
 
 use crate::api::function::FnResult;
 use crate::api::meta::OperatorInfo;
-use crate::api::scope::ScopeDelta;
 use crate::api::{Branch, Map, Unary};
-use crate::channel::builder::{BatchRoute, ChannelKind};
-use crate::channel::output::OutputBuilderImpl;
-use crate::channel::ChannelBuilder;
 use crate::dataflow::{DataflowBuilder, OperatorRef};
 use crate::errors::BuildJobError;
-use crate::graph::{Edge, Port};
+use crate::graph::{Edge};
 use crate::macros::route::*;
 use crate::operator::{NotifiableOperator, OperatorCore};
-use crate::{Data, JobConf, WorkerId};
+use crate::{JobConf, WorkerId};
 
 #[must_use = "this `Stream` must be consumed"]
 pub struct Stream<D: Data> {
     /// the upstream this stream flowed;
-    upstream: OutputBuilderImpl<D>,
+    output: SharedOutputBuilder<D>,
     /// adapter to its upstream output
-    ch: ChannelBuilder<D>,
+    output_ch_kind: ChannelKind<D>,
     /// builder of dataflow plan;
-    builder: DataflowBuilder,
+    dataflow_builder: DataflowBuilder,
     /// static partitions of the stream;
     partitions: usize,
 }
 
 impl<D: Data> Stream<D> {
-    pub(crate) fn new(upstream: OutputBuilderImpl<D>, dfb: &DataflowBuilder) -> Self {
-        let ch = ChannelBuilder::bind(&upstream);
+    pub(crate) fn new(output: SharedOutputBuilder<D>, dfb: &DataflowBuilder) -> Self {
         let partitions = dfb.worker_id.total_peers() as usize;
-        Stream { upstream, ch, builder: dfb.clone(), partitions }
+        Stream { output, output_ch_kind: ChannelKind::Pipeline, dataflow_builder: dfb.clone(), partitions }
     }
 }
 
 impl<D: Data> Stream<D> {
     pub fn get_job_conf(&self) -> Arc<JobConf> {
-        self.builder.config.clone()
+        self.dataflow_builder.config.clone()
     }
 
     pub fn get_worker_id(&self) -> WorkerId {
-        self.builder.worker_id
+        self.dataflow_builder.worker_id
     }
 
     pub fn get_upstream_port(&self) -> Port {
-        self.upstream.get_port()
+        self.output.get_port()
     }
 
     pub fn get_local_batch_size(&self) -> usize {
@@ -88,20 +87,20 @@ impl<D: Data> Stream<D> {
     }
 
     pub fn get_upstream_batch_size(&self) -> usize {
-        self.upstream.get_batch_size()
+        self.output.get_batch_size()
     }
 
     pub fn get_upstream_batch_capacity(&self) -> u32 {
-        self.upstream.get_batch_capacity()
+        self.output.get_batch_capacity()
     }
 
     pub fn set_upstream_batch_size(&mut self, size: usize) -> &mut Self {
-        self.upstream.set_batch_size(size);
+        self.output.set_batch_size(size);
         self
     }
 
     pub fn set_upstream_batch_capacity(&mut self, cap: u32) -> &mut Self {
-        self.upstream.set_batch_capacity(cap);
+        self.output.set_batch_capacity(cap);
         self
     }
 
@@ -126,14 +125,14 @@ impl<D: Data> Stream<D> {
     where
         F: Fn(&D) -> FnResult<u64> + Send + 'static,
     {
-        self.partitions = self.builder.worker_id.total_peers() as usize;
+        self.partitions = self.dataflow_builder.worker_id.total_peers() as usize;
         self.ch
             .set_channel_kind(ChannelKind::Shuffle(box_route!(route)));
         self
     }
 
     pub fn broadcast(mut self) -> Stream<D> {
-        self.partitions = self.builder.worker_id.total_peers() as usize;
+        self.partitions = self.dataflow_builder.worker_id.total_peers() as usize;
         self.ch.set_channel_kind(ChannelKind::Broadcast);
         self
     }
@@ -154,7 +153,7 @@ impl<D: Data> Stream<D> {
 
     pub(crate) fn sync_state(mut self) -> Stream<D> {
         if self.ch.is_pipeline() {
-            let target = self.builder.worker_id.index;
+            let target = self.dataflow_builder.worker_id.index;
             self.ch
                 .set_channel_kind(ChannelKind::BatchShuffle(BatchRoute::AllToOne(target)));
         }
@@ -167,13 +166,13 @@ impl<D: Data> Stream<D> {
         T: OperatorCore,
         F: FnOnce(&OperatorInfo) -> T,
     {
-        let dfb = self.builder.clone();
+        let dfb = self.dataflow_builder.clone();
         let partitions = self.partitions;
         let op = self.add_operator(name, op_builder)?;
         let port = op.new_output::<O>();
         let ch = ChannelBuilder::bind(&port);
 
-        Ok(Stream { upstream: port, ch, builder: dfb, partitions })
+        Ok(Stream { output: port, ch, dataflow_builder: dfb, partitions })
     }
 
     pub fn transform_notify<F, O, T>(
@@ -184,13 +183,13 @@ impl<D: Data> Stream<D> {
         T: NotifiableOperator,
         F: FnOnce(&OperatorInfo) -> T,
     {
-        let dfb = self.builder.clone();
+        let dfb = self.dataflow_builder.clone();
         let partitions = self.partitions;
         let op = self.add_notify_operator(name, op_builder)?;
         let port = op.new_output::<O>();
         let ch = ChannelBuilder::bind(&port);
 
-        Ok(Stream { upstream: port, ch, builder: dfb, partitions })
+        Ok(Stream { output: port, ch, dataflow_builder: dfb, partitions })
     }
 
     pub fn union_transform<R, O, F, T>(
@@ -210,13 +209,13 @@ impl<D: Data> Stream<D> {
         } else {
             let mut op = self.add_operator(name, op_builder)?;
             let edge = other.connect(&mut op)?;
-            self.builder.add_edge(edge);
-            let dfb = self.builder.clone();
+            self.dataflow_builder.add_edge(edge);
+            let dfb = self.dataflow_builder.clone();
             let partitions = std::cmp::max(self.partitions, other.partitions);
             let port = op.new_output::<O>();
 
             let ch = ChannelBuilder::bind(&port);
-            Ok(Stream { upstream: port, ch, builder: dfb, partitions })
+            Ok(Stream { output: port, ch, dataflow_builder: dfb, partitions })
         }
     }
 
@@ -237,12 +236,12 @@ impl<D: Data> Stream<D> {
         } else {
             let mut op = self.add_notify_operator(name, op_builder)?;
             let edge = other.connect(&mut op)?;
-            self.builder.add_edge(edge);
-            let dfb = self.builder.clone();
+            self.dataflow_builder.add_edge(edge);
+            let dfb = self.dataflow_builder.clone();
             let partitions = std::cmp::max(self.partitions, other.partitions);
             let output = op.new_output::<O>();
             let ch = ChannelBuilder::bind(&output);
-            Ok(Stream { ch, upstream: output, builder: dfb, partitions })
+            Ok(Stream { ch, output: output, dataflow_builder: dfb, partitions })
         }
     }
 
@@ -258,12 +257,12 @@ impl<D: Data> Stream<D> {
         let op = self.add_operator(name, op_builder)?;
         let left = op.new_output::<L>();
         let right = op.new_output::<R>();
-        let dfb = self.builder.clone();
+        let dfb = self.dataflow_builder.clone();
         let partitions = self.partitions;
         let ch = ChannelBuilder::bind(&left);
-        let left = Stream { upstream: left, ch, builder: dfb.clone(), partitions };
+        let left = Stream { output: left, ch, dataflow_builder: dfb.clone(), partitions };
         let ch = ChannelBuilder::bind(&right);
-        let right = Stream { upstream: right, ch, builder: dfb, partitions };
+        let right = Stream { output: right, ch, dataflow_builder: dfb, partitions };
         Ok((left, right))
     }
 
@@ -279,12 +278,12 @@ impl<D: Data> Stream<D> {
         let op = self.add_notify_operator(name, op_builder)?;
         let left = op.new_output::<L>();
         let right = op.new_output::<R>();
-        let dfb = self.builder.clone();
+        let dfb = self.dataflow_builder.clone();
         let partitions = self.partitions;
         let ch = ChannelBuilder::bind(&left);
-        let left = Stream { upstream: left, ch, builder: dfb.clone(), partitions };
+        let left = Stream { output: left, ch, dataflow_builder: dfb.clone(), partitions };
         let ch = ChannelBuilder::bind(&right);
-        let right = Stream { upstream: right, ch, builder: dfb, partitions };
+        let right = Stream { output: right, ch, dataflow_builder: dfb, partitions };
         Ok((left, right))
     }
 
@@ -294,7 +293,7 @@ impl<D: Data> Stream<D> {
         F: FnOnce(&OperatorInfo) -> T,
     {
         let op_ref = self.add_operator(name, op_builder)?;
-        self.builder.add_sink(op_ref.get_index());
+        self.dataflow_builder.add_sink(op_ref.get_index());
         Ok(())
     }
 
@@ -304,9 +303,9 @@ impl<D: Data> Stream<D> {
         }
         let r = self.ch.add_delta(ScopeDelta::ToSibling(1));
         assert!(r.is_none());
-        let mut op = self.builder.get_operator(op_index);
+        let mut op = self.dataflow_builder.get_operator(op_index);
         let edge = self.connect(&mut op)?;
-        self.builder.add_edge(edge);
+        self.dataflow_builder.add_edge(edge);
         Ok(())
     }
 
@@ -344,10 +343,10 @@ impl<D: Data> Stream<D> {
         F: FnOnce(&OperatorInfo) -> O,
     {
         let mut op = self
-            .builder
+            .dataflow_builder
             .add_operator(name, self.get_scope_level(), builder);
         let edge = self.connect(&mut op)?;
-        self.builder.add_edge(edge);
+        self.dataflow_builder.add_edge(edge);
         Ok(op)
     }
 
@@ -359,21 +358,21 @@ impl<D: Data> Stream<D> {
         F: FnOnce(&OperatorInfo) -> O,
     {
         let mut op = self
-            .builder
+            .dataflow_builder
             .add_notify_operator(name, self.get_scope_level(), builder);
         let edge = self.connect(&mut op)?;
-        self.builder.add_edge(edge);
+        self.dataflow_builder.add_edge(edge);
         Ok(op)
     }
 
     fn connect(&mut self, op: &OperatorRef) -> Result<Edge, BuildJobError> {
         let target = op.next_input_port();
         let ch = std::mem::replace(&mut self.ch, ChannelBuilder::default());
-        let channel = ch.connect_to(target, &self.builder)?;
+        let channel = ch.connect_to(target, &self.dataflow_builder)?;
         let (push, pull, notify) = channel.take();
         let ch_info = push.ch_info;
-        self.upstream.set_push(push);
-        op.add_input(ch_info, pull, notify, &self.builder.event_emitter);
+        self.output.set_push(push);
+        op.add_input(ch_info, pull, notify, &self.dataflow_builder.event_emitter);
         let edge = Edge::new(ch_info);
         Ok(edge)
     }

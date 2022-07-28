@@ -146,7 +146,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
                                     .parse::<u64>()
                                     .expect("error target id format");
                                 targets.push(dst);
-                               //vertices.insert(dst, (0, 0));
+                                //vertices.insert(dst, (0, 0));
                                 count += 1;
                             } else {
                                 panic!("error format line : {}", e);
@@ -176,7 +176,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
         offset += edges.len();
         neighbors.extend(edges);
     }
-    println!("{:?}",neighbors);
+    println!("{:?}", neighbors);
 
     let mut vertex_vec = Vec::with_capacity(vertices.len());
     for (id, (mut idx, len)) in vertices {

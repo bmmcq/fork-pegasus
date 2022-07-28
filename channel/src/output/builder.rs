@@ -61,11 +61,11 @@ impl<D: Data> OutputBuilderImpl<D> {
     }
 }
 
-pub struct SharedOutputBuild<D: Data> {
+pub struct SharedOutputBuilder<D: Data> {
     inner: Rc<RefCell<OutputBuilderImpl<D>>>,
 }
 
-impl<D: Data> SharedOutputBuild<D> {
+impl<D: Data> SharedOutputBuilder<D> {
     pub fn get_port(&self) -> Port {
         self.inner.borrow().get_port()
     }
@@ -87,7 +87,7 @@ impl<D: Data> SharedOutputBuild<D> {
     }
 }
 
-impl<D: Data> OutputBuilder for SharedOutputBuild<D> {
+impl<D: Data> OutputBuilder for SharedOutputBuilder<D> {
     fn build(self: Box<Self>) -> Option<Box<dyn Output>> {
         let mut bm = self.inner.borrow_mut();
         let push = bm.push.take()?;

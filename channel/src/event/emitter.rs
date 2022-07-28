@@ -5,7 +5,8 @@ use pegasus_common::rc::UnsafeRcPtr;
 
 use super::Event;
 use crate::error::IOResult;
-use crate::{IOError, Pull, Push};
+use crate::{ChannelId, IOError, Pull, Push};
+use crate::base::{BasePull, BasePush};
 
 #[derive(Clone)]
 pub struct EventEmitter<P> {
@@ -21,6 +22,8 @@ impl<P> EventEmitter<P> {
         self.tx.borrow().len()
     }
 }
+
+pub type BaseEventEmitter = EventEmitter<BasePush<Event>>;
 
 impl<P> EventEmitter<P>
 where
@@ -70,6 +73,8 @@ impl<P> EventCollector<P> {
         EventCollector { rx, received: VecDeque::new() }
     }
 }
+
+pub type BaseEventCollector = EventCollector<BasePull<Event>>;
 
 impl<P> EventCollector<P>
 where

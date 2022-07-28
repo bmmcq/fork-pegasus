@@ -3,7 +3,7 @@
 max_pool_size = 8
 
 [network]
-# Set server id of current config belongs to;
+# Set service id of current config belongs to;
 server_id = 0
 # Set size of total servers;
 servers_size = 2
@@ -42,7 +42,7 @@ servers_size = 2
 
 # Set addresses of your servers;
 # If the cluster is standalone, the size of addresses should be equal to [server_size] set above, and the addresses
-# should be in order, the fisrt address would be server 0.
+# should be in order, the fisrt address would be service 0.
 
 [[network.servers]]
 ip = '127.0.0.1'

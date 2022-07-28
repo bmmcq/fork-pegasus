@@ -18,82 +18,59 @@ use std::fmt::Debug;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
+use pegasus_channel::data::Data;
 
 use pegasus_executor::{Task, TaskState};
 
 use crate::api::primitive::source::Source;
-use crate::channel_id::ChannelId;
-use crate::channel::output::{OutputBuilder, OutputBuilderImpl};
-use crate::data_plane::Push;
 use crate::dataflow::{Dataflow, DataflowBuilder};
 use crate::errors::{BuildJobError, JobExecError};
-use crate::event::emitter::EventEmitter;
-use crate::event::Event;
-use crate::graph::Port;
-use crate::progress::DynPeers;
-use crate::progress::Eos;
 use crate::resource::{KeyedResources, ResourceMap};
 use crate::result::ResultSink;
 use crate::schedule::Schedule;
-use crate::{Data, JobConf, Tag, WorkerId};
+use crate::{JobConf, WorkerId};
 
-pub struct Worker<D: Data, T: Debug + Send + 'static> {
-    pub conf: Arc<JobConf>,
-    pub id: WorkerId,
-    task: WorkerTask,
-    peer_guard: Arc<AtomicUsize>,
+pub struct Worker {
+    index: usize,
     start: Instant,
-    sink: ResultSink<T>,
+    conf: Arc<JobConf>,
+    peer_guard: Arc<AtomicUsize>,
+    task: WorkerTask,
     resources: ResourceMap,
     keyed_resources: KeyedResources,
-    _ph: std::marker::PhantomData<D>,
 }
 
-impl<D: Data, T: Debug + Send + 'static> Worker<D, T> {
-    pub(crate) fn new(
-        conf: &Arc<JobConf>, id: WorkerId, peer_guard: &Arc<AtomicUsize>, sink: ResultSink<T>,
-    ) -> Self {
-        if peer_guard.fetch_add(1, Ordering::SeqCst) == 0 {
-            pegasus_memory::alloc::new_task(conf.job_id as usize);
-        }
+impl Worker {
+    pub fn new(conf: JobConf) -> Self {
+        let conf = Arc::new(conf);
         Worker {
+            index: 0,
             conf: conf.clone(),
-            id,
             task: WorkerTask::Empty,
-            peer_guard: peer_guard.clone(),
+            peer_guard: Arc::new(AtomicUsize::new(0)),
             start: Instant::now(),
-            sink,
             resources: ResourceMap::default(),
             keyed_resources: KeyedResources::default(),
-            _ph: std::marker::PhantomData,
         }
     }
 
-    pub fn dataflow<F>(&mut self, func: F) -> Result<(), BuildJobError>
+    pub fn global_index(&self) -> u16 {
+        todo!()
+    }
+
+
+
+    pub fn build<T, F, Iter>(&mut self, source: Iter, sink: ResultSink<T>, func: F) -> Result<(), BuildJobError>
     where
-        F: FnOnce(&mut Source<D>, ResultSink<T>) -> Result<(), BuildJobError>,
+        T: Send + 'static,
+        Iter: IntoIterator,
+        Iter::IntoIter: Send + 'static,
+        Iter::Item: Data, 
+        F: FnOnce(Source, ResultSink<T>) -> Result<(), BuildJobError>,
     {
-        // set current worker's id into tls variable to make it accessible at anywhere;
-        let _g = crate::worker_id::guard(self.id);
-        let resource =
-            crate::channel::build_channel::<Event>(ChannelId::new(self.id.job_id, 0), &self.conf)?;
-        assert_eq!(resource.ch_id.index, 0);
-        let (mut tx, rx) = resource.take();
-        if self.conf.total_workers() > 1 {
-            assert_eq!(tx.len(), self.id.total_peers() as usize + 1);
-            let mut abort = tx.swap_remove(self.id.index as usize);
-            abort.close().ok();
-        }
-        let event_emitter = EventEmitter::new(tx);
-        let dfb = DataflowBuilder::new(self.id, event_emitter.clone(), &self.conf);
-        let root_builder = OutputBuilderImpl::new(
-            Port::new(0, 0),
-            0,
-            self.conf.batch_size as usize,
-            self.conf.batch_capacity,
-        );
-        let mut input = Source::new(root_builder.clone(), &dfb);
-        let output = self.sink.clone();
+
+        let dfb = DataflowBuilder::new(self.id, &self.conf);
+        let output = sink.clone();
         func(&mut input, output)?;
         let mut sch = Schedule::new(event_emitter, rx);
         let df = dfb.build(&mut sch)?;

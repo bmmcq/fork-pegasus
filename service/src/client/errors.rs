@@ -40,10 +40,10 @@ pub enum ConnectError {
 impl Display for ConnectError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConnectError::ServerNotFount(server_id) => write!(f, "server {} not found;", server_id),
+            ConnectError::ServerNotFount(server_id) => write!(f, "service {} not found;", server_id),
             ConnectError::AddrTableNotFount => write!(f, "Server Address Table not register;"),
             ConnectError::FailConnect(server_id, source) => {
-                write!(f, "fail to connect server {} because {};", server_id, source)
+                write!(f, "fail to connect service {} because {};", server_id, source)
             }
         }
     }

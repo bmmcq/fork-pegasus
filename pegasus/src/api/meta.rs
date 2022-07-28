@@ -13,21 +13,6 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::sync::Arc;
-
-use crate::Tag;
-
-pub trait Priority: Send + Sync {
-    fn compare(&self, a: &Tag, b: &Tag) -> std::cmp::Ordering;
-}
-
-#[derive(Clone)]
-pub enum ScopePrior {
-    /// TODO : doc
-    None,
-    /// TODO : doc
-    Prior(Arc<dyn Priority>),
-}
 
 #[derive(Clone)]
 pub struct OperatorInfo {

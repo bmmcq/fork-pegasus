@@ -142,7 +142,7 @@ pub struct MultiScopeBufStreamPush<T, P> {
 }
 
 impl<T, P> MultiScopeBufStreamPush<T, P> {
-    pub fn new(ch_info: ChannelInfo, worker_index: u16, max_concurrent_scopes: u16, inner: P) -> Self {
+    pub fn new(ch_info: ChannelInfo, worker_index: u16, inner: P) -> Self {
         Self {
             ch_info,
             worker_index,
@@ -152,7 +152,6 @@ impl<T, P> MultiScopeBufStreamPush<T, P> {
             scope_buffers: ScopeBuffer::new(
                 ch_info.batch_size,
                 ch_info.batch_capacity,
-                max_concurrent_scopes,
             ),
             inner,
         }

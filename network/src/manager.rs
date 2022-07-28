@@ -51,7 +51,7 @@ impl ServerManager {
                 if let Err(e) =
                     crate::transport::block::connect(self.server_id, s.id, self.conn_params, s.addr)
                 {
-                    error!("fail to connect server[id={},addr={:?}], caused by {}", s.id, s.addr, e);
+                    error!("fail to connect service[id={},addr={:?}], caused by {}", s.id, s.addr, e);
                 }
             }
         }

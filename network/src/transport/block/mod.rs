@@ -37,7 +37,7 @@ pub fn listen_on<A: ToSocketAddrs>(
                 match listener.accept() {
                     Ok((mut stream, addr)) => {
                         if let Ok(Some((remote_id, hb))) = super::check_connection(&mut stream) {
-                            info!("accept new connection from server {} on {:?}", remote_id, addr);
+                            info!("accept new connection from service {} on {:?}", remote_id, addr);
                             if !crate::state::is_connected(server_id, remote_id) {
                                 // create network communication_old channel for lib user;
                                 let mut write_half = stream
@@ -58,7 +58,7 @@ pub fn listen_on<A: ToSocketAddrs>(
                                     start_net_receiver(server_id, remote, hb, &params, &hook, stream);
                                 }
                             } else {
-                                warn!("server {} is connected and already in use;", remote_id);
+                                warn!("service {} is connected and already in use;", remote_id);
                             }
                         } else {
                             warn!("illegal connection from {:?}, ignored;", addr);
@@ -96,13 +96,13 @@ pub fn connect<A: ToSocketAddrs>(
     // 连接请求可能会失败， 或许由于对端服务器未启动端口监听，调用方需要根据返回内容确定是否重试;
     let mut conn = TcpStream::connect(addr)?;
     let addr = conn.peer_addr()?;
-    debug!("connect to server {:?};", addr);
+    debug!("connect to service {:?};", addr);
     let hb_sec = params.get_hb_interval_sec();
     super::setup_connection(local_id, hb_sec, &mut conn)?;
     debug!("setup connection to {:?} success;", addr);
     if let Some((id, hb_sec)) = super::check_connection(&mut conn)? {
         if id == remote_id {
-            info!("connect server {} on {:?} success;", remote_id, addr);
+            info!("connect service {} on {:?} success;", remote_id, addr);
             if let Some(state) = crate::state::add_connection(local_id, remote_id, addr) {
                 let remote = Server { id: remote_id, addr };
                 if params.is_nonblocking {
@@ -117,7 +117,7 @@ pub fn connect<A: ToSocketAddrs>(
                 return Err(NetError::ConflictConnect(remote_id));
             }
         } else {
-            error!("invalid server id, expected {}, actual {}", remote_id, id);
+            error!("invalid service id, expected {}, actual {}", remote_id, id);
             return Err(NetError::UnexpectedServer((remote_id, id)));
         }
     }

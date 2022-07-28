@@ -50,28 +50,28 @@ impl Display for NetError {
                 write!(f, "channel id = 0 is retained by library;")
             }
             NetError::NotConnected(id) => {
-                write!(f, "server with id = {} not connected;", id)
+                write!(f, "service with id = {} not connected;", id)
             }
             NetError::IOError(err) => {
                 write!(f, "IOError: {};", err)
             }
             NetError::ConflictConnect(id) => {
-                write!(f, "server {} is already connected and in use;", id)
+                write!(f, "service {} is already connected and in use;", id)
             }
             NetError::UnexpectedServer((expect, actual)) => {
-                write!(f, "unexpected server with id {}, expected {};", actual, expect)
+                write!(f, "unexpected service with id {}, expected {};", actual, expect)
             }
             NetError::ServerNotFound(id) => {
-                write!(f, "server {} not found;", id)
+                write!(f, "service {} not found;", id)
             }
             NetError::ServerStarted(id) => {
-                write!(f, "server {} has already started; ", id)
+                write!(f, "service {} has already started; ", id)
             }
             NetError::AddrParseError(err) => {
                 write!(f, "invalid address: {};", err)
             }
             NetError::HBAbnormal(id) => {
-                write!(f, "heartbeat from server {:?} lost;", id)
+                write!(f, "heartbeat from service {:?} lost;", id)
             }
             NetError::ChannelRxReset(id) => {
                 write!(f, "channel {}'s receiver is already in use, multi-receivers is not allowed;", id)

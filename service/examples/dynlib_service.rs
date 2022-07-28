@@ -8,8 +8,8 @@
 // #[derive(Debug, StructOpt)]
 // #[structopt(name = "dynamic library service", about = "example of rpc service")]
 // struct Config {
-//     #[structopt(long = "server")]
-//     server: bool,
+//     #[structopt(long = "service")]
+//     service: bool,
 //     #[structopt(long = "client")]
 //     client: bool,
 // }
@@ -33,10 +33,10 @@
 //     "#).unwrap();
 //
 //     let config: Config = Config::from_args();
-//     if config.server {
+//     if config.service {
 //         pegasus_server::cluster::standalone::start(rpc_config, server_config, DynLibraryAssembly)
 //             .await
-//             .expect("start server failure;")
+//             .expect("start service failure;")
 //     } else if config.client {
 //         let mut client = pegasus_server::client::RPCJobClient::new();
 //
@@ -68,7 +68,7 @@
 //             assert_eq!(res, vec![9u8; 8]);
 //         }
 //     } else {
-//         println!("--server or --client");
+//         println!("--service or --client");
 //     }
 // }
 

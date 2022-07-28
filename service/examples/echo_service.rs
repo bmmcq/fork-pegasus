@@ -18,7 +18,7 @@ use tokio_stream::StreamExt;
 struct Config {
     #[structopt(long = "config", parse(from_os_str))]
     config_dir: PathBuf,
-    #[structopt(long = "server")]
+    #[structopt(long = "service")]
     server: bool,
     #[structopt(long = "client")]
     client: bool,
@@ -49,7 +49,7 @@ async fn main() {
     if config.server {
         pegasus_server::cluster::standalone::start(rpc_config, server_config, EchoJobParser)
             .await
-            .expect("start server failure;")
+            .expect("start service failure;")
     } else if config.client {
         let servers_size = server_config.servers_size();
         let addr_table = resolve_server_addr(servers_size, &config, server_config, rpc_config);
@@ -69,7 +69,7 @@ async fn main() {
         }
         println!("finish {} echo request, used {:?};", config.times, start.elapsed());
     } else {
-        println!("--server or --client");
+        println!("--service or --client");
     }
 }
 
@@ -81,7 +81,7 @@ fn resolve_server_addr(
         let mut not_connect = servers_size;
         let mut server_id = 0;
         while not_connect > 0 {
-            print!("give server {} address: ", server_id);
+            print!("give service {} address: ", server_id);
             std::io::stdout().flush().unwrap();
             let mut buf = String::new();
             std::io::stdin().read_line(&mut buf).unwrap();
@@ -130,7 +130,7 @@ fn resolve_server_addr(
         for i in 0..servers_size {
             let addr = net_conf
                 .get_server_addr(i as u64)
-                .expect("server not found");
+                .expect("service not found");
             let host = IpAddr::from_str(addr.get_ip()).unwrap();
             addr_table.insert(i as u64, SocketAddr::new(host, port));
         }

@@ -25,12 +25,14 @@ impl Display for Port {
     }
 }
 
+pub type ChannelIndex = u16; 
+
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct ChannelId {
-    /// The sequence number of task the communication_old belongs to;
+    /// The sequence number of job this channel belongs to;
     pub job_seq: u64,
-    /// The index of a communication_old channel in the dataflow execution plan;
-    pub index: u16,
+    /// The index of a channel in the dataflow execution plan;
+    pub index: ChannelIndex,
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
@@ -112,7 +114,7 @@ pub mod abort;
 pub mod base;
 pub mod block;
 pub mod buffer;
-pub mod builder;
+pub mod alloc;
 pub mod data;
 pub mod eos;
 pub mod error;

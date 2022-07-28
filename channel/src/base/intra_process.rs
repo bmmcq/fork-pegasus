@@ -13,27 +13,34 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
+use std::error::Error;
+use pegasus_common::bytes::Bytes;
 use pegasus_common::channel::*;
 
-use crate::data::Data;
-use crate::error::IOErrorKind;
+
+use pegasus_server::consumer::Consumer;
+use pegasus_server::Decode;
+use async_trait::async_trait;
+
+use crate::error::{ErrMsg, IOErrorKind};
 use crate::{ChannelId, IOError, Pull, Push};
 
 pub struct IntraProcessPush<T: Send> {
+    index: u16,
     pub ch_id: ChannelId,
     sender: MessageSender<T>,
 }
 
 impl<T: Send> IntraProcessPush<T> {
-    pub fn new(ch_id: ChannelId, sender: MessageSender<T>) -> Self {
-        IntraProcessPush { ch_id, sender }
+    pub fn new(index: u16, ch_id: ChannelId, sender: MessageSender<T>) -> Self {
+        IntraProcessPush { index, ch_id, sender }
     }
 }
 
-impl<T: Data> Push<T> for IntraProcessPush<T> {
+impl<T: Send> Push<T> for IntraProcessPush<T> {
     fn push(&mut self, msg: T) -> Result<(), IOError> {
         self.sender.send(msg).map_err(|_| {
-            error!("IntraProcessPush#push: send data failure;");
+            error!("IntraProcessPush({})#push: send data failure;", self.index);
             IOError::new(IOErrorKind::SendToDisconnect)
         })
     }
@@ -42,6 +49,38 @@ impl<T: Data> Push<T> for IntraProcessPush<T> {
     fn close(&mut self) -> Result<(), IOError> {
         self.sender.close();
         Ok(())
+    }
+}
+
+#[async_trait]
+impl<T: Decode> Consumer for IntraProcessPush<T> {
+    async fn consume(&mut self, msg: Bytes) -> Result<(), Box<dyn Error>> {
+        match T::read_from(&mut msg.as_ref()) {
+            Ok(v) => {
+                if let Err(e) = self.push(v) {
+                    Err(Box::new(e))
+                } else {
+                    Ok(())
+                }
+            }
+            Err(e) => {
+                Err(Box::new(IOError::new(IOErrorKind::DecodeError(ErrMsg::Own(e.to_string())))))
+            }
+        }
+    }
+
+    async fn close(&mut self) {
+       self.sender.close();
+    }
+}
+
+impl <T> Clone for IntraProcessPush<T> {
+    fn clone(&self) -> Self {
+        Self {
+            index: self.index,
+            ch_id: self.ch_id,
+            sender: self.sender.clone()
+        }
     }
 }
 
@@ -58,7 +97,7 @@ impl<T: Send> IntraProcessPull<T> {
     }
 }
 
-impl<T: Data> Pull<T> for IntraProcessPull<T> {
+impl<T: Send> Pull<T> for IntraProcessPull<T> {
     fn pull_next(&mut self) -> Result<Option<T>, IOError> {
         if self.is_closed {
             let mut eof = IOError::eof();

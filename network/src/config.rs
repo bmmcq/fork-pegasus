@@ -141,7 +141,7 @@ impl ConnectionParams {
     }
 }
 
-/// Check "../server/config/server_config.toml" for configuration descriptions;
+/// Check "../service/config/server_config.toml" for configuration descriptions;
 #[derive(Debug, Deserialize)]
 pub struct NetworkConfig {
     pub server_id: u64,
@@ -341,14 +341,14 @@ impl NetworkConfig {
     pub fn set_server_addr(&mut self, server_id: u64, addr: ServerAddr) -> Result<&mut Self, NetError> {
         if server_id as usize >= self.servers_size {
             Err(NetError::InvalidConfig(Some(format!(
-                "invalid server_id({}) larger than server size {}",
+                "invalid server_id({}) larger than service size {}",
                 server_id, self.servers_size
             ))))
         } else {
             if let Some(ref mut servers) = self.servers {
                 servers[server_id as usize] = Some(addr);
             } else {
-                unreachable!("servers is none while server size = {}", self.servers_size);
+                unreachable!("servers is none while service size = {}", self.servers_size);
             }
             Ok(self)
         }
@@ -361,10 +361,10 @@ impl NetworkConfig {
             if let Some(ref addr) = servers[index] {
                 Ok(SocketAddr::new(addr.ip.parse()?, addr.port))
             } else {
-                Err(NetError::InvalidConfig(Some("local server address not found".to_owned())))
+                Err(NetError::InvalidConfig(Some("local service address not found".to_owned())))
             }
         } else {
-            Err(NetError::InvalidConfig(Some("local server address not found".to_owned())))
+            Err(NetError::InvalidConfig(Some("local service address not found".to_owned())))
         }
     }
 
@@ -420,7 +420,7 @@ impl NetworkConfig {
                     servers.push(server);
                 } else {
                     return Err(NetError::InvalidConfig(Some(format!(
-                        "address of server {} not found",
+                        "address of service {} not found",
                         id
                     ))));
                 }

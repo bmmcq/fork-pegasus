@@ -21,52 +21,9 @@ pub use primitive::sink::{FromStream, Sink};
 pub use primitive::source::{IntoDataflow, Source};
 pub use primitive::unary::Unary;
 
-pub mod notification {
-
-    use crate::progress::Eos;
-    use crate::Tag;
-
-    #[derive(Debug, Clone)]
-    pub struct End {
-        pub(crate) port: usize,
-        pub(crate) end: Eos,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Cancel {
-        pub(crate) port: usize,
-        pub(crate) tag: Tag,
-    }
-
-    impl End {
-        pub fn tag(&self) -> &Tag {
-            &self.end.tag
-        }
-
-        pub fn port(&self) -> usize {
-            self.port
-        }
-
-        pub fn take(self) -> Eos {
-            self.end
-        }
-    }
-
-    impl Cancel {
-        pub fn tag(&self) -> &Tag {
-            &self.tag
-        }
-
-        pub fn port(&self) -> usize {
-            self.port
-        }
-    }
-}
 
 pub(crate) mod concise;
-pub mod error;
 pub mod function;
 pub(crate) mod iteration;
 pub mod meta;
 pub(crate) mod primitive;
-pub(crate) mod scope;

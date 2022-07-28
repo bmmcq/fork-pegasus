@@ -90,7 +90,7 @@ lazy_static! {
 
 #[derive(Debug, Clone)]
 pub enum JobServerConf {
-    /// Only server in the list will be used;
+    /// Only service in the list will be used;
     Select(Vec<u64>),
     /// specify total 'n' servers will be used;
     Total(u64),
@@ -124,15 +124,15 @@ pub struct JobConf {
     pub job_id: u64,
     /// the name to describe the job;
     pub job_name: String,
-    /// workers per server;
-    pub workers: u32,
+    /// workers per service;
+    pub workers: u8,
     /// the most milliseconds the job can run;
     pub time_limit: u64,
     /// the size used to batching streaming data;
-    pub batch_size: u32,
+    pub batch_size: u16,
     /// the size used to limit each operator's output size per-schedule;
-    pub batch_capacity: u32,
-    /// the most memory(MB) this job can use in each server;
+    pub batch_capacity: u16,
+    /// the most memory(MB) this job can use in each service;
     pub memory_limit: u32,
     /// set to print runtime dataflow plan before running;
     pub plan_print: bool,
@@ -140,8 +140,6 @@ pub struct JobConf {
     servers: JobServerConf,
     /// set enable trace job run progress;
     pub trace_enable: bool,
-    /// optimization factors of early-stop
-    pub debug: bool,
 }
 
 impl JobConf {

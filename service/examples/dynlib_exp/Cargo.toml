@@ -7,7 +7,7 @@ edition = "2018"
 
 [dependencies]
 pegasus = { path = "../../../pegasus" }
-pegasus_server = { path = "../../../server" }
+pegasus_server = { path = "../.." }
 
 [lib]
 name = "dynexp"

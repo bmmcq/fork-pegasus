@@ -54,7 +54,7 @@ impl JobClient {
         match config.servers() {
             JobServerConf::Select(ref list) => {
                 if list.is_empty() {
-                    return Err(JobExecError::InvalidConfig("server list can't be empty".to_owned()));
+                    return Err(JobExecError::InvalidConfig("service list can't be empty".to_owned()));
                 }
 
                 conf.servers = list.clone();
@@ -71,7 +71,7 @@ impl JobClient {
             }
             JobServerConf::Total(n) => {
                 if *n == 0 {
-                    return Err(JobExecError::InvalidConfig("server size can't be 0".to_owned()));
+                    return Err(JobExecError::InvalidConfig("service size can't be 0".to_owned()));
                 }
 
                 if *n == 1 {

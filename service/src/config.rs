@@ -53,8 +53,8 @@ mod test {
     #[test]
     fn parse_config_test() {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        if !path.ends_with("server") {
-            path.push("server");
+        if !path.ends_with("..") {
+            path.push("..");
         }
         path.push("config");
         path.push("tests");

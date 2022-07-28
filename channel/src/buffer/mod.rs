@@ -171,8 +171,8 @@ pub struct ScopeBuffer<D> {
 unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
-    pub fn new(batch_size: u16, batch_capacity: u16, max_concurrent_scopes: u16) -> Self {
-        ScopeBuffer { batch_size, batch_capacity, max_concurrent_scopes, scope_buffers: AHashMap::new() }
+    pub fn new(batch_size: u16, batch_capacity: u16) -> Self {
+        ScopeBuffer { batch_size, batch_capacity, max_concurrent_scopes: u16::MAX, scope_buffers: AHashMap::new() }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {

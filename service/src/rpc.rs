@@ -179,7 +179,7 @@ pub struct RPCJobServer<S: pb::job_service_server::JobService> {
     rpc_config: RPCServerConfig,
 }
 
-/// start both rpc server and pegasus server
+/// start both rpc service and pegasus service
 pub async fn start_all<P, D, E>(
     rpc_config: RPCServerConfig, server_config: Configuration, assemble: P, server_detector: D,
     mut listener: E,
@@ -209,7 +209,7 @@ where
     Ok(())
 }
 
-/// startup rpc server
+/// startup rpc service
 pub async fn start_rpc_with_listener<P, E>(
     server_id: u64, rpc_config: RPCServerConfig, assemble: P, listener: E,
 ) -> Result<(), Box<dyn std::error::Error>>
@@ -273,7 +273,7 @@ impl<S: pb::job_service_server::JobService> RPCJobServer<S> {
             .tcp_keep_alive_ms
             .map(|d| Duration::from_millis(d));
         let incoming = TcpIncoming::new(addr, rpc_config.tcp_nodelay.unwrap_or(true), ka)?;
-        info!("starting RPC job server on {} ...", incoming.inner.local_addr());
+        info!("starting RPC job service on {} ...", incoming.inner.local_addr());
         listener.on_rpc_start(server_id, incoming.inner.local_addr())?;
 
         service.serve_with_incoming(incoming).await?;
@@ -301,12 +301,12 @@ pub struct ListenerToInfo;
 
 impl ServiceStartListener for ListenerToInfo {
     fn on_rpc_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
-        info!("RPC server of server[{}] start on {}", server_id, addr);
+        info!("RPC service of service[{}] start on {}", server_id, addr);
         Ok(())
     }
 
     fn on_server_start(&mut self, server_id: u64, addr: SocketAddr) -> std::io::Result<()> {
-        info!("compute server[{}] start on {}", server_id, addr);
+        info!("compute service[{}] start on {}", server_id, addr);
         Ok(())
     }
 }

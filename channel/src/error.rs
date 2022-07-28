@@ -20,10 +20,17 @@ use std::sync::Weak;
 
 use pegasus_common::channel::RecvError;
 use pegasus_common::tag::Tag;
+use pegasus_server::ServerError;
 
 use crate::ChannelId;
 
 pub type IOResult<D> = Result<D, IOError>;
+
+
+pub enum ErrMsg {
+    Ref(&'static str),
+    Own(String)
+}
 
 #[derive(Clone, Debug)]
 pub enum IOErrorKind {
@@ -31,8 +38,8 @@ pub enum IOErrorKind {
     UnexpectedEof,
     SendAfterClose,
     SendToDisconnect,
-    EncodeError(&'static str),
-    DecodeError(&'static str),
+    EncodeError(ErrMsg),
+    DecodeError(ErrMsg),
     // IO error from system's IO derive, like network(tcp..), files,
     SystemIO(io::ErrorKind),
     // block by flow control;
@@ -60,6 +67,20 @@ pub struct IOError {
 impl From<IOErrorKind> for IOError {
     fn from(e: IOErrorKind) -> Self {
         IOError::new(e)
+    }
+}
+
+impl From<ServerError> for IOError {
+    fn from(err: ServerError) -> Self {
+        match err {
+            ServerError::ServerNotFound(id) => IOError::new(IOErrorKind::S)
+            ServerError::ServerNotStart(_) => {}
+            ServerError::SendError(_) => {}
+            ServerError::StdIO(_) => {}
+            ServerError::WriteError(_) => {}
+            ServerError::ConnectError(_) => {}
+            ServerError::ConnectionError(_) => {}
+        }
     }
 }
 

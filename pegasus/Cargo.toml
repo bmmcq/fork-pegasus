@@ -8,6 +8,7 @@ edition = "2021"
 pegasus_common = { path = "../common" }
 pegasus_memory = { path = "../memory" }
 pegasus_network = { path = "../network" }
+pegasus_channel = { path = "../channel" }
 pegasus_executor = { path = "../executor" }
 pegasus_graph = { path = "../graph" }
 crossbeam-channel = "0.5"

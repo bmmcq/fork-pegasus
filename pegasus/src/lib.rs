@@ -27,26 +27,22 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, Mutex, RwLock};
 
 mod config;
+mod channel;
+
 mod graph;
-#[macro_use]
-mod worker_id;
+
+
 #[macro_use]
 pub mod errors;
 pub mod api;
-pub(crate) mod data;
 #[macro_use]
 pub mod macros;
-pub mod channel;
-mod data_plane;
 pub mod dataflow;
-mod event;
 mod operator;
-pub(crate) mod progress;
 pub mod resource;
 pub mod result;
 mod schedule;
 pub mod stream;
-pub mod utils;
 mod worker;
 
 use std::collections::HashSet;
@@ -54,11 +50,9 @@ use std::fmt::Debug;
 use std::net::SocketAddr;
 
 pub use config::{read_from, Configuration, JobConf, JobServerConf};
-pub use data::Data;
 pub use pegasus_common::codec;
 pub use pegasus_memory::alloc::check_current_task_memory;
 pub use pegasus_network::ServerDetect;
-pub use tag::Tag;
 pub use worker::Worker;
 pub use worker_id::{get_current_worker, set_current_worker, WorkerId};
 
@@ -66,7 +60,6 @@ use crate::api::Source;
 pub use crate::errors::{BuildJobError, JobSubmitError, SpawnJobError, StartupError};
 use crate::resource::PartitionedResource;
 use crate::result::{ResultSink, ResultStream};
-use crate::worker_id::WorkerIdIter;
 
 lazy_static! {
     static ref SERVER_ID: Mutex<Option<u64>> = Mutex::new(None);
@@ -77,7 +70,7 @@ thread_local! {
     static LOCAL_SERVER_ID : Cell<Option<u64>> = Cell::new(None);
 }
 
-/// get the id of current server among clusters;
+/// get the id of current service among clusters;
 #[inline]
 pub fn server_id() -> Option<u64> {
     LOCAL_SERVER_ID.with(|id| {
@@ -151,7 +144,7 @@ pub fn startup(conf: Configuration) -> Result<(), StartupError> {
                 servers.insert(p.id);
             }
             let addr = pegasus_network::start_up(server_id, conn_conf, addr, peers)?;
-            info!("server {} start on {:?}", server_id, addr);
+            info!("service {} start on {:?}", server_id, addr);
         } else {
             return Err(StartupError::CannotFindServers);
         }
@@ -184,7 +177,7 @@ pub fn startup_with<D: ServerDetect + 'static>(
         let addr = net_conf.local_addr()?;
         let conn_conf = net_conf.get_connection_param();
         let addr = pegasus_network::start_up(server_id, conn_conf, addr, detect)?;
-        info!("server {} start on {:?}", server_id, addr);
+        info!("service {} start on {:?}", server_id, addr);
 
         let mut lock = SERVERS
             .write()
@@ -301,7 +294,7 @@ fn allocate_local_worker(conf: &Arc<JobConf>) -> Result<Option<WorkerIdIter>, Bu
                 }
             }
             if my_index < 0 {
-                warn!("current server {} not among job {};", my_id, conf.job_id);
+                warn!("current service {} not among job {};", my_id, conf.job_id);
                 Ok(None)
             } else {
                 let server_index = my_index as u32;
@@ -318,7 +311,7 @@ fn allocate_local_worker(conf: &Arc<JobConf>) -> Result<Option<WorkerIdIter>, Bu
                 }
             }
         } else {
-            return BuildJobError::server_err(format!("current server not start yet;"));
+            return BuildJobError::server_err(format!("current service not start yet;"));
         }
     }
 }
