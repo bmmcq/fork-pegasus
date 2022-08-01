@@ -4,11 +4,10 @@ use std::collections::VecDeque;
 use pegasus_common::rc::UnsafeRcPtr;
 
 use super::Event;
-use crate::error::IOResult;
-use crate::{ChannelId, IOError, Pull, Push};
 use crate::base::{BasePull, BasePush};
+use crate::error::IOResult;
+use crate::{IOError, Pull, Push};
 
-#[derive(Clone)]
 pub struct EventEmitter<P> {
     tx: UnsafeRcPtr<RefCell<Vec<P>>>,
 }
@@ -20,6 +19,12 @@ impl<P> EventEmitter<P> {
 
     pub fn peers(&self) -> usize {
         self.tx.borrow().len()
+    }
+}
+
+impl<P> Clone for EventEmitter<P> {
+    fn clone(&self) -> Self {
+        Self { tx: self.tx.clone() }
     }
 }
 

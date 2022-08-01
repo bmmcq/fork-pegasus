@@ -825,6 +825,7 @@ dependencies = [
  "ahash",
  "async-trait",
  "crossbeam-channel",
+ "crossbeam-queue",
  "enum_dispatch",
  "log",
  "nohash-hasher",

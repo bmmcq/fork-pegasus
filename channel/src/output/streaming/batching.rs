@@ -1,7 +1,7 @@
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
-use crate::buffer::batch::{RoBatch, WoBatch};
+use crate::buffer::batch::{BufferPool, RoBatch, WoBatch};
 use crate::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
@@ -28,6 +28,20 @@ impl<T: Data, P> BufStreamPush<T, P> {
             total_send: 0,
             tag,
             buffer: BoundedBuffer::new(ch_info.batch_size, ch_info.batch_capacity),
+            batches: vec![],
+            inner: push,
+        }
+    }
+
+    pub fn with_pool(
+        ch_info: ChannelInfo, worker_index: u16, tag: Tag, pool: BufferPool<T>, push: P,
+    ) -> Self {
+        Self {
+            ch_info,
+            worker_index,
+            total_send: 0,
+            tag,
+            buffer: BoundedBuffer::with_pool(pool),
             batches: vec![],
             inner: push,
         }
@@ -149,10 +163,7 @@ impl<T, P> MultiScopeBufStreamPush<T, P> {
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
-            scope_buffers: ScopeBuffer::new(
-                ch_info.batch_size,
-                ch_info.batch_capacity,
-            ),
+            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity),
             inner,
         }
     }

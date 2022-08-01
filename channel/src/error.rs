@@ -26,10 +26,10 @@ use crate::ChannelId;
 
 pub type IOResult<D> = Result<D, IOError>;
 
-
+#[derive(Clone, Debug)]
 pub enum ErrMsg {
     Ref(&'static str),
-    Own(String)
+    Own(String),
 }
 
 #[derive(Clone, Debug)]
@@ -72,15 +72,7 @@ impl From<IOErrorKind> for IOError {
 
 impl From<ServerError> for IOError {
     fn from(err: ServerError) -> Self {
-        match err {
-            ServerError::ServerNotFound(id) => IOError::new(IOErrorKind::S)
-            ServerError::ServerNotStart(_) => {}
-            ServerError::SendError(_) => {}
-            ServerError::StdIO(_) => {}
-            ServerError::WriteError(_) => {}
-            ServerError::ConnectError(_) => {}
-            ServerError::ConnectionError(_) => {}
-        }
+        todo!()
     }
 }
 

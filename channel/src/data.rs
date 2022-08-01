@@ -2,15 +2,15 @@ use std::fmt::Debug;
 
 use pegasus_common::io::{ReadExt, WriteExt};
 use pegasus_common::tag::Tag;
-use pegasus_server::{Decode, Encode};
+use pegasus_server::{Buf, BufMut, Decode, Encode};
 
 use crate::buffer::batch::{RoBatch, WoBatch};
 use crate::eos::Eos;
 
 /// The constraint of data that can be delivered through the channel;
-pub trait Data: Send + Encode + Decode + 'static {}
+pub trait Data: Encode + Send + 'static {}
 
-impl<T: Send + Encode + Decode + 'static> Data for T {}
+impl<T: Encode + Send + 'static> Data for T {}
 
 pub struct Item<T> {
     pub tag: Tag,
@@ -57,13 +57,13 @@ impl<T> MiniBatch<T> {
 }
 
 impl<T: Encode> Encode for MiniBatch<T> {
-    fn write_to<W: WriteExt>(&self, _writer: &mut W) -> std::io::Result<()> {
+    fn write_to<W: BufMut>(&self, _writer: &mut W) {
         todo!()
     }
 }
 
 impl<T: Decode> Decode for MiniBatch<T> {
-    fn read_from<R: ReadExt>(_reader: &mut R) -> std::io::Result<Self> {
+    fn read_from<R: Buf>(reader: &mut R) -> std::io::Result<Self> {
         todo!()
     }
 }
@@ -143,6 +143,12 @@ impl<D> Debug for MiniScopeBatch<D> {
     }
 }
 
+impl<D: Decode> MiniScopeBatch<D> {
+    pub fn read_with<R: Buf>(_buf: WoBatch<D>, _reader: &mut R) -> std::io::Result<Self> {
+        todo!()
+    }
+}
+
 impl<D> std::ops::Deref for MiniScopeBatch<D> {
     type Target = RoBatch<D>;
 
@@ -169,31 +175,13 @@ impl<D: Clone> Clone for MiniScopeBatch<D> {
 }
 
 impl<D: Encode> Encode for MiniScopeBatch<D> {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
-        self.tag.write_to(writer)?;
-        writer.write_u16(self.src)?;
-        let len = self.data.len() as u64;
-        writer.write_u64(len)?;
-
-        for data in self.data.iter() {
-            data.write_to(writer)?;
-        }
-        self.end.write_to(writer)?;
-        Ok(())
+    fn write_to<W: BufMut>(&self, writer: &mut W) {
+        todo!()
     }
 }
 
 impl<D: Decode> Decode for MiniScopeBatch<D> {
-    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let tag = Tag::read_from(reader)?;
-        let src = reader.read_u16()?;
-        let len = reader.read_u64()? as usize;
-        let mut buf = WoBatch::new(len);
-        for _ in 0..len {
-            buf.push(D::read_from(reader)?);
-        }
-        let data = buf.finalize();
-        let end = Option::<Eos>::read_from(reader)?;
-        Ok(MiniScopeBatch { tag, src, end, data })
+    fn read_from<R: Buf>(reader: &mut R) -> std::io::Result<Self> {
+        todo!()
     }
 }

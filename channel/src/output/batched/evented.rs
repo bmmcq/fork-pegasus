@@ -12,6 +12,14 @@ pub struct EventEosBatchPush<T, PD, PE> {
     _ph: std::marker::PhantomData<T>,
 }
 
+impl<T, PD, PE> EventEosBatchPush<T, PD, PE> {
+    pub fn new(
+        worker_index: u16, target_worker: u16, target_port: Port, event_push: EventEmitter<PE>, inner: PD,
+    ) -> Self {
+        Self { worker_index, target_worker, target_port, event_push, inner, _ph: std::marker::PhantomData }
+    }
+}
+
 impl<T, PD, PE> Push<MiniScopeBatch<T>> for EventEosBatchPush<T, PD, PE>
 where
     T: Data,

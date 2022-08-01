@@ -3,11 +3,10 @@ use std::ops::Range;
 pub type ServerId = u8;
 
 pub struct JobServerConfig {
-    servers: Vec<(u8, ServerId)>
+    servers: Vec<(u8, ServerId)>,
 }
 
 impl JobServerConfig {
-
     pub fn include_servers(&self) -> usize {
         self.servers.len()
     }
@@ -42,19 +41,12 @@ impl JobServerConfig {
     }
 }
 
-
 pub struct JobConfig {
     job_id: u64,
     default_batch_size: u16,
     default_batch_capacity: u16,
     job_name: String,
-    servers : JobServerConfig
+    servers: JobServerConfig,
 }
 
-impl JobConfig {
-
-
-
-}
-
-
+impl JobConfig {}

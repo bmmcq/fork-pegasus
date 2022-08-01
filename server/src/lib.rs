@@ -2,24 +2,23 @@
 extern crate log;
 
 use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::net::SocketAddr;
 
-use bytes::{Buf, Bytes};
 use nohash_hasher::IntSet;
 use once_cell::sync::OnceCell;
-pub use valley::codec::{Encode, Decode};
+use pegasus_common::config::ServerId;
+pub use valley::codec::*;
 use valley::connection::quic::QUIConnBuilder;
 use valley::connection::tcp::TcpConnBuilder;
 pub use valley::errors::VError as ServerError;
 use valley::name_service::StaticNameService;
 use valley::server::ValleyServer;
-use valley::Message;
-pub use valley::{ChannelId};
-use pegasus_common::config::ServerId;
+pub use valley::ChannelId;
 
 use crate::consumer::Consumer;
 use crate::naming::NameServiceImpl;
-use crate::producer::Producer;
+use crate::producer::{Package, Producer};
 
 static GLOBAL_SERVER_PROXY: OnceCell<ServerInstance> = OnceCell::new();
 
@@ -31,6 +30,19 @@ enum ServerKind {
 pub struct ServerInstance {
     id: ServerId,
     kind: ServerKind,
+}
+
+impl Debug for ServerInstance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self.kind {
+            ServerKind::TCPServer(_) => {
+                write!(f, "tcp server[{}]", self.id)
+            }
+            ServerKind::QUICServer(_) => {
+                write!(f, "quic server[{}]", self.id)
+            }
+        }
+    }
 }
 
 impl ServerInstance {
@@ -76,11 +88,11 @@ impl ServerInstance {
         }
         let (t, mut r) = match &self.kind {
             ServerKind::TCPServer(s) => {
-                s.alloc_symmetry_channel_unbound_send::<T>(ch_id, &server_ids)
+                s.alloc_symmetry_channel_unbound_send::<Package<T>>(ch_id, &server_ids)
                     .await
             }
             ServerKind::QUICServer(s) => {
-                s.alloc_symmetry_channel_unbound_send::<T>(ch_id, &server_ids)
+                s.alloc_symmetry_channel_unbound_send::<Package<T>>(ch_id, &server_ids)
                     .await
             }
         }?;
@@ -113,13 +125,13 @@ impl ServerInstance {
                         break;
                     }
                 }
-            };
+            }
             info!("finish receive messages of channel {};", ch_id);
         });
 
         let sends = t.split();
         let mut producers = HashMap::with_capacity(sends.len());
-        for p in t.split() {
+        for p in sends {
             producers.insert(p.get_target_server_id() as u8, Producer::new(p));
         }
         Ok(producers)

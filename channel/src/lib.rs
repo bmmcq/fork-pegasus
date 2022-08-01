@@ -25,7 +25,7 @@ impl Display for Port {
     }
 }
 
-pub type ChannelIndex = u16; 
+pub type ChannelIndex = u16;
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct ChannelId {
@@ -111,10 +111,10 @@ impl<T, P: ?Sized + Pull<T>> Pull<T> for Box<P> {
 }
 
 pub mod abort;
+pub mod alloc;
 pub mod base;
 pub mod block;
 pub mod buffer;
-pub mod alloc;
 pub mod data;
 pub mod eos;
 pub mod error;

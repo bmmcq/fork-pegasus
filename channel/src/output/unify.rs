@@ -1,6 +1,7 @@
 use pegasus_common::tag::Tag;
+use pegasus_server::Encode;
 
-use crate::base::BasePush;
+use crate::base::{BasePull, BasePush};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
 use crate::error::IOResult;
@@ -13,28 +14,30 @@ use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::ChannelInfo;
 
 pub type BaseBatchPush<T> = BasePush<MiniScopeBatch<T>>;
-pub type BaseEventedBathPush<T> = EventEosBatchPush<T, BaseBatchPush<T>, BasePush<Event>>;
+pub type BaseBatchPull<T> = BasePull<MiniScopeBatch<T>>;
+pub type EventedBaseBathPush<T> = EventEosBatchPush<T, BaseBatchPush<T>, BasePush<Event>>;
+pub type BufEventedBaseBatchPush<T> = BufStreamPush<T, EventedBaseBathPush<T>>;
 
-pub enum EnumStreamBufPush<T: Data> {
+pub enum EnumStreamBufPush<T: Data + Encode> {
     Pipeline(BufStreamPush<T, BaseBatchPush<T>>),
     MultiScopePipeline(MultiScopeBufStreamPush<T, BaseBatchPush<T>>),
-    Exchange(PartitionStreamPush<T, BufStreamPush<T, BaseEventedBathPush<T>>>),
-    MultiScopeExchange(PartitionStreamPush<T, MultiScopeBufStreamPush<T, BaseEventedBathPush<T>>>),
-    Aggregate(BufStreamPush<T, AggregatePush<T, BaseEventedBathPush<T>>>),
-    MultiScopeAggregate(MultiScopeBufStreamPush<T, AggregatePush<T, BaseEventedBathPush<T>>>),
-    AggregateByScope(MultiScopeBufStreamPush<T, AggregateByScopePush<T, BaseEventedBathPush<T>>>),
+    Exchange(PartitionStreamPush<T, BufStreamPush<T, EventedBaseBathPush<T>>>),
+    MultiScopeExchange(PartitionStreamPush<T, MultiScopeBufStreamPush<T, EventedBaseBathPush<T>>>),
+    Aggregate(BufStreamPush<T, AggregatePush<T, EventedBaseBathPush<T>>>),
+    MultiScopeAggregate(MultiScopeBufStreamPush<T, AggregatePush<T, EventedBaseBathPush<T>>>),
+    AggregateByScope(MultiScopeBufStreamPush<T, AggregateByScopePush<T, EventedBaseBathPush<T>>>),
 }
 
-impl<T: Data> EnumStreamBufPush<T> {
-    
+impl<T> EnumStreamBufPush<T>
+where
+    T: Data + Encode,
+{
     pub fn pipeline(worker_index: u16, ch_info: ChannelInfo, tag: Tag, push: BaseBatchPush<T>) -> Self {
         let push = BufStreamPush::new(ch_info, worker_index, tag, push);
         Self::Pipeline(push)
     }
 
-    pub fn multi_scope_pipeline(
-        worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
-    ) -> Self {
+    pub fn multi_scope_pipeline(worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>) -> Self {
         let push = MultiScopeBufStreamPush::new(ch_info, worker_index, push);
         Self::MultiScopePipeline(push)
     }

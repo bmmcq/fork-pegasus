@@ -38,7 +38,7 @@ pub enum Tag {
     Spilled(Vec<u32>),
 }
 
-pub const MAX_LENGTH: usize = !0u8 as usize;
+pub const MAX_LENGTH: usize = 64;
 
 pub fn null() -> Tag {
     Tag::Null

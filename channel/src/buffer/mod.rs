@@ -5,19 +5,24 @@ use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
 pub mod batch;
-use self::batch::{BatchPool, RoBatch, WoBatch};
+pub mod decoder;
+use self::batch::{BufferPool, RoBatch, WoBatch};
 
 pub struct WouldBlock;
 
 pub struct BoundedBuffer<D> {
     exhaust: bool,
     buffer: Option<WoBatch<D>>,
-    pool: BatchPool<D>,
+    pool: BufferPool<D>,
 }
 
 impl<D> BoundedBuffer<D> {
-    pub(crate) fn new(batch_size: u16, batch_capacity: u16) -> Self {
-        let pool = BatchPool::new(batch_size, batch_capacity);
+    pub fn new(batch_size: u16, batch_capacity: u16) -> Self {
+        let pool = BufferPool::new(batch_size, batch_capacity);
+        BoundedBuffer { exhaust: false, buffer: None, pool }
+    }
+
+    pub fn with_pool(pool: BufferPool<D>) -> Self {
         BoundedBuffer { exhaust: false, buffer: None, pool }
     }
 
@@ -25,7 +30,7 @@ impl<D> BoundedBuffer<D> {
         assert!(!self.exhaust, "still push after set exhaust");
 
         if self.buffer.is_none() {
-            if let Some(buf) = self.pool.fetch() {
+            if let Some(buf) = self.pool.try_fetch() {
                 self.buffer = Some(buf);
             } else {
                 return Err(entry);
@@ -51,7 +56,7 @@ impl<D> BoundedBuffer<D> {
             buf
         } else {
             self.pool
-                .fetch()
+                .try_fetch()
                 .unwrap_or_else(|| WoBatch::new(1))
         };
         buf.push(entry).expect("unexpected full;");
@@ -63,7 +68,7 @@ impl<D> BoundedBuffer<D> {
         T: Iterator<Item = D>,
     {
         if self.buffer.is_none() {
-            if let Some(buf) = self.pool.fetch() {
+            if let Some(buf) = self.pool.try_fetch() {
                 self.buffer = Some(buf);
             } else {
                 return Err(WouldBlock);
@@ -74,7 +79,7 @@ impl<D> BoundedBuffer<D> {
             while let Some(next) = iter.next() {
                 buf.push(next).expect("");
                 if buf.is_full() {
-                    if let Some(new_buf) = self.pool.fetch() {
+                    if let Some(new_buf) = self.pool.try_fetch() {
                         let full = std::mem::replace(&mut buf, new_buf);
                         target.push(full.finalize());
                     } else {
@@ -172,7 +177,12 @@ unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
     pub fn new(batch_size: u16, batch_capacity: u16) -> Self {
-        ScopeBuffer { batch_size, batch_capacity, max_concurrent_scopes: u16::MAX, scope_buffers: AHashMap::new() }
+        ScopeBuffer {
+            batch_size,
+            batch_capacity,
+            max_concurrent_scopes: u16::MAX,
+            scope_buffers: AHashMap::new(),
+        }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {

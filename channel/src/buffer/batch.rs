@@ -1,16 +1,21 @@
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use crossbeam_queue::SegQueue;
+use tokio::sync::Notify;
 
 pub struct WoBatch<T> {
     data: Box<[Option<T>]>,
     cursor: usize,
-    recycle: Option<Sender<Box<[Option<T>]>>>,
+    recycle: Option<Recycle<T>>,
 }
 
 pub struct RoBatch<T> {
     data: Box<[Option<T>]>,
     cursor: usize,
     len: usize,
-    recycle: Option<Sender<Box<[Option<T>]>>>,
+    recycle: Option<Recycle<T>>,
 }
 
 impl<T> WoBatch<T> {
@@ -56,7 +61,7 @@ impl<T> WoBatch<T> {
         RoBatch { data: self.data, cursor: 0, len: self.cursor, recycle: self.recycle }
     }
 
-    fn set_recycle(&mut self, recycle: Sender<Box<[Option<T>]>>) {
+    fn set_recycle(&mut self, recycle: Recycle<T>) {
         self.recycle = Some(recycle);
     }
 }
@@ -94,7 +99,7 @@ impl<T> Drop for RoBatch<T> {
         if let Some(recycle) = self.recycle.take() {
             if self.data.len() > 0 {
                 let buf = std::mem::replace(&mut self.data, vec![].into_boxed_slice());
-                recycle.send(buf).ok();
+                recycle.recycle(buf);
             }
         }
     }
@@ -144,21 +149,61 @@ impl<'a, T> Iterator for RoBatchDrain<'a, T> {
     }
 }
 
-pub struct BatchPool<T> {
-    capacity: u16,
-    batch_size: u16,
-    alloc_guard: usize,
-    pool: Receiver<Box<[Option<T>]>>,
-    recycle: Sender<Box<[Option<T>]>>,
+struct Recycle<T> {
+    hook: Sender<Box<[Option<T>]>>,
+    notifies: Arc<SegQueue<Arc<Notify>>>,
 }
 
-impl<T> BatchPool<T> {
-    pub fn new(batch_size: u16, capacity: u16) -> Self {
-        let (recycle, pool) = crossbeam_channel::bounded(capacity as usize);
-        Self { batch_size, capacity, alloc_guard: 0, pool, recycle }
+impl<T> Recycle<T> {
+    fn new(sender: Sender<Box<[Option<T>]>>) -> Self {
+        Self { hook: sender, notifies: Arc::new(SegQueue::new()) }
     }
 
-    pub fn fetch(&mut self) -> Option<WoBatch<T>> {
+    fn recycle(&self, buf: Box<[Option<T>]>) {
+        self.hook.send(buf).expect("recycle fail;");
+        if let Some(n) = self.notifies.pop() {
+            n.notify_one();
+        }
+    }
+}
+
+impl<T> Clone for Recycle<T> {
+    fn clone(&self) -> Self {
+        Self { hook: self.hook.clone(), notifies: self.notifies.clone() }
+    }
+}
+
+pub struct BufferPool<T> {
+    capacity: u16,
+    batch_size: u16,
+    is_frozen: bool,
+    local_version: usize,
+    alloc_guard: Arc<AtomicUsize>,
+    unfreeze_peers: Arc<AtomicUsize>,
+    reuse_version: Arc<AtomicUsize>,
+    pool: Receiver<Box<[Option<T>]>>,
+    recycle: Recycle<T>,
+    notify: Arc<Notify>,
+}
+
+impl<T> BufferPool<T> {
+    pub fn new(batch_size: u16, capacity: u16) -> Self {
+        let (sender, pool) = crossbeam_channel::bounded(capacity as usize);
+        Self {
+            batch_size,
+            capacity,
+            is_frozen: false,
+            local_version: 0,
+            alloc_guard: Arc::new(AtomicUsize::new(0)),
+            unfreeze_peers: Arc::new(AtomicUsize::new(1)),
+            reuse_version: Arc::new(AtomicUsize::new(0)),
+            pool,
+            recycle: Recycle::new(sender),
+            notify: Arc::new(Notify::new()),
+        }
+    }
+
+    pub fn try_fetch(&mut self) -> Option<WoBatch<T>> {
         match self.pool.try_recv() {
             Ok(batch) => {
                 let mut wb = WoBatch::from(batch);
@@ -166,14 +211,26 @@ impl<T> BatchPool<T> {
                 Some(wb)
             }
             Err(TryRecvError::Empty) => {
-                if self.alloc_guard < self.capacity as usize {
-                    self.alloc_guard += 1;
-                    let mut wb = WoBatch::new(self.batch_size as usize);
-                    wb.set_recycle(self.recycle.clone());
-                    Some(WoBatch::new(self.batch_size as usize))
-                } else {
-                    None
+                let mut allocated = self.alloc_guard.load(Ordering::SeqCst);
+
+                while allocated < self.capacity as usize {
+                    match self.alloc_guard.compare_exchange(
+                        allocated,
+                        allocated + 1,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        Ok(_) => {
+                            let mut wb = WoBatch::new(self.batch_size as usize);
+                            wb.set_recycle(self.recycle.clone());
+                            return Some(WoBatch::new(self.batch_size as usize));
+                        }
+                        Err(i) => {
+                            allocated = i;
+                        }
+                    }
                 }
+                None
             }
             Err(TryRecvError::Disconnected) => {
                 panic!("batch pool dropped abnormally");
@@ -181,7 +238,72 @@ impl<T> BatchPool<T> {
         }
     }
 
+    pub async fn fetch(&mut self) -> WoBatch<T> {
+        loop {
+            if let Some(buf) = self.try_fetch() {
+                return buf;
+            } else {
+                let notify_me = self.notify.clone();
+                self.recycle.notifies.push(notify_me);
+                self.notify.notified().await
+            }
+        }
+    }
+
+    pub fn freeze(&mut self) {
+        if !self.is_frozen {
+            self.is_frozen = true;
+            self.unfreeze_peers
+                .fetch_sub(1, Ordering::SeqCst);
+        }
+    }
+
+    pub fn unfreeze(&mut self) {
+        if self.is_frozen {
+            self.is_frozen = false;
+            if self
+                .unfreeze_peers
+                .fetch_add(1, Ordering::SeqCst)
+                == 0
+            {
+                self.reuse_version
+                    .fetch_add(1, Ordering::SeqCst);
+            } else {
+                self.local_version = self.reuse_version.load(Ordering::SeqCst);
+            }
+        }
+    }
+
     pub fn is_idle(&self) -> bool {
-        self.pool.len() == self.alloc_guard
+        self.is_frozen
+            && self.get_unfreeze_peers() == 0
+            && self.pool.len() == self.alloc_guard.load(Ordering::SeqCst)
+    }
+
+    fn get_unfreeze_peers(&self) -> usize {
+        if self.reuse_version.load(Ordering::SeqCst) > self.local_version {
+            0
+        } else {
+            self.unfreeze_peers.load(Ordering::SeqCst)
+        }
+    }
+}
+
+impl<T> Clone for BufferPool<T> {
+    fn clone(&self) -> Self {
+        self.unfreeze_peers
+            .fetch_add(1, Ordering::SeqCst);
+        Self {
+            capacity: self.capacity,
+            batch_size: self.batch_size,
+            is_frozen: self.is_frozen,
+            local_version: self.local_version,
+            alloc_guard: self.alloc_guard.clone(),
+            unfreeze_peers: self.unfreeze_peers.clone(),
+            reuse_version: self.reuse_version.clone(),
+            pool: self.pool.clone(),
+            recycle: self.recycle.clone(),
+            notify: Arc::new(Notify::new()),
+        }
     }
 }

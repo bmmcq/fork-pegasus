@@ -1,10 +1,11 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
 use bytes::BufMut;
+use pegasus_common::config::ServerId;
 use valley::codec::Encode;
 use valley::errors::VError;
-use valley::send::unbound::{VUnboundSender, VUnboundServerSender};
-use pegasus_common::config::ServerId;
+use valley::send::unbound::VUnboundServerSender;
 
 pub struct Producer<T> {
     cp_cnt: Option<Arc<AtomicUsize>>,
@@ -35,9 +36,8 @@ impl<T: Encode> Encode for Package<T> {
     }
 }
 
-impl<T> Producer<T>
-{
-    pub fn new(send: VUnboundServerSender<T>) -> Self {
+impl<T> Producer<T> {
+    pub fn new(send: VUnboundServerSender<Package<T>>) -> Self {
         Self { cp_cnt: Some(Arc::new(AtomicUsize::new(1))), send }
     }
 
@@ -47,7 +47,7 @@ impl<T> Producer<T>
 
     pub fn send(&self, consumer_index: u8, data: T) -> Result<(), VError> {
         self.send
-            .send( Package::data_of(consumer_index, data))
+            .send(Package::data_of(consumer_index, data))
     }
 
     pub fn flush(&self) -> Result<(), VError> {
@@ -56,9 +56,9 @@ impl<T> Producer<T>
 
     pub fn close(&mut self) -> Result<(), VError> {
         if let Some(cnt) = self.cp_cnt.take() {
-           if cnt.fetch_sub(1, Ordering::SeqCst) == 1 {
-               self.send.send(Package::eof())?;
-           }
+            if cnt.fetch_sub(1, Ordering::SeqCst) == 1 {
+                self.send.send(Package::eof())?;
+            }
         }
         Ok(())
     }

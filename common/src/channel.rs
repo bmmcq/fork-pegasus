@@ -31,7 +31,7 @@ impl RecvError {
     }
 }
 
-pub struct MessageSender<T: Send> {
+pub struct MessageSender<T> {
     id: u64,
     inner: Option<Sender<T>>,
     poisoned: Arc<AtomicBool>,
@@ -43,7 +43,7 @@ pub struct MessageReceiver<T> {
     sender_poisoned: Arc<AtomicBool>,
 }
 
-impl<T: Send> MessageSender<T> {
+impl<T> MessageSender<T> {
     fn new(tx: Sender<T>, state: &Arc<AtomicBool>) -> Self {
         let id: u64 = rand::thread_rng().gen();
         trace!("create sender with id {}", id);
@@ -55,7 +55,7 @@ impl<T: Send> MessageSender<T> {
     }
 }
 
-impl<T: Send> Clone for MessageSender<T> {
+impl<T> Clone for MessageSender<T> {
     fn clone(&self) -> Self {
         MessageSender {
             id: self.id,
@@ -66,7 +66,7 @@ impl<T: Send> Clone for MessageSender<T> {
     }
 }
 
-impl<T: Send> Drop for MessageSender<T> {
+impl<T> Drop for MessageSender<T> {
     fn drop(&mut self) {
         if !self.is_closed {
             warn!("dropping an unclosed 'MessageSender' id = {}", self.id);
@@ -87,7 +87,7 @@ pub fn unbound<T: Send>() -> (MessageSender<T>, MessageReceiver<T>) {
     (MessageSender::new(tx, &poisoned), MessageReceiver::new(rx, &poisoned))
 }
 
-impl<T: Send> MessageSender<T> {
+impl<T> MessageSender<T> {
     pub fn send(&self, message: T) -> Result<(), T> {
         if let Some(sender) = self.inner.as_ref() {
             sender
@@ -106,7 +106,7 @@ impl<T: Send> MessageSender<T> {
     }
 }
 
-impl<T: Send> MessageReceiver<T> {
+impl<T> MessageReceiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
         match self.inner.recv() {
             Ok(d) => Ok(d),
