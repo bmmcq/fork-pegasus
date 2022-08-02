@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bytes::BufMut;
 use pegasus_common::config::ServerId;
 use valley::codec::Encode;
-use valley::errors::VError;
+use valley::errors::{SendError};
 use valley::send::unbound::VUnboundServerSender;
 
 pub struct Producer<T> {
@@ -45,16 +45,16 @@ impl<T> Producer<T> {
         self.send.get_target_server_id() as ServerId
     }
 
-    pub fn send(&self, consumer_index: u8, data: T) -> Result<(), VError> {
+    pub fn send(&self, consumer_index: u8, data: T) -> Result<(), SendError> {
         self.send
             .send(Package::data_of(consumer_index, data))
     }
 
-    pub fn flush(&self) -> Result<(), VError> {
+    pub fn flush(&self) -> Result<(), SendError> {
         self.send.flush()
     }
 
-    pub fn close(&mut self) -> Result<(), VError> {
+    pub fn close(&mut self) -> Result<(), SendError> {
         if let Some(cnt) = self.cp_cnt.take() {
             if cnt.fetch_sub(1, Ordering::SeqCst) == 1 {
                 self.send.send(Package::eof())?;

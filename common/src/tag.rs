@@ -29,7 +29,7 @@ use crate::codec::*;
 /// In the implementation, we use an array of 32-bits integer to represent tag. The `ROOT` tag is an empty array,
 /// all others will copy it's parent, and extend with a new unique integer;
 ///
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Tag {
     Null,
     One(u32),
@@ -295,10 +295,10 @@ impl Default for Tag {
     }
 }
 
-impl ::std::fmt::Debug for Tag {
+impl ::std::fmt::Display for Tag {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self {
-            Tag::Null => write!(f, "[root]"),
+            Tag::Null => write!(f, "[]"),
             Tag::One(v) => write!(f, "[{}]", v),
             Tag::Two(a, b) => write!(f, "[{},{}]", a, b),
             Tag::Three(a, b, c) => write!(f, "[{},{},{}]", a, b, c),

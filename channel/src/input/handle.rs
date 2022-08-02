@@ -8,9 +8,8 @@ use smallvec::SmallVec;
 use crate::block::BlockGuard;
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
-use crate::error::IOResult;
 use crate::input::InputInfo;
-use crate::{IOError, Pull};
+use crate::{PullError, Pull};
 
 pub enum PopEntry<T> {
     EOF,
@@ -51,7 +50,7 @@ where
     T: Data,
     P: Pull<MiniScopeBatch<T>>,
 {
-    pub fn pop(&mut self) -> Result<PopEntry<T>, IOError> {
+    pub fn pop(&mut self) -> Result<PopEntry<T>, PullError> {
         if self.is_exhaust {
             return Ok(PopEntry::EOF);
         }
@@ -87,7 +86,7 @@ where
         }
     }
 
-    pub fn check_ready(&mut self) -> IOResult<bool> {
+    pub fn check_ready(&mut self) -> Result<bool, PullError> {
         if self.is_exhaust {
             return Ok(false);
         }
@@ -127,7 +126,7 @@ where
         self.block.borrow_mut().push(guard);
     }
 
-    pub fn notify_eos(&mut self, eos: Eos) -> IOResult<()> {
+    pub fn notify_eos(&mut self, eos: Eos) -> Result<(), PullError> {
         assert_eq!(self.tag, eos.tag);
         assert!(!self.is_exhaust);
 
@@ -262,7 +261,7 @@ where
     T: Data,
     P: Pull<MiniScopeBatch<T>>,
 {
-    pub fn pop(&mut self) -> Result<PopEntry<T>, IOError> {
+    pub fn pop(&mut self) -> Result<PopEntry<T>, PullError> {
         if !self.has_updated {
             return if self.is_exhaust() { Ok(PopEntry::EOF) } else { Ok(PopEntry::NotReady) };
         }
@@ -295,7 +294,7 @@ where
         }
     }
 
-    pub fn check_ready(&mut self) -> IOResult<bool> {
+    pub fn check_ready(&mut self) -> Result<bool, PullError> {
         let mut n = 0;
         loop {
             match self.input.pull_next() {
@@ -346,7 +345,7 @@ where
         }
     }
 
-    pub fn notify_eos(&mut self, eos: Eos) -> IOResult<()> {
+    pub fn notify_eos(&mut self, eos: Eos) -> Result<(), PullError> {
         assert_eq!(self.info.scope_level as usize, eos.tag.len());
         self.check_ready()?;
 

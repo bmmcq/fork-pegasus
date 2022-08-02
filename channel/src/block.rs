@@ -2,7 +2,7 @@ use std::sync::{Arc, Weak};
 
 use pegasus_common::tag::Tag;
 
-use crate::error::IOResult;
+use crate::error::PushError;
 
 pub enum BlockKind<D> {
     None,
@@ -82,5 +82,5 @@ impl<D> BlockEntry<D> {
 pub trait BlockHandle<T> {
     fn has_blocks(&self) -> bool;
 
-    fn try_unblock(&mut self) -> IOResult<()>;
+    fn try_unblock(&mut self) -> Result<(), PushError>;
 }

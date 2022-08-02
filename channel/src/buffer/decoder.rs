@@ -7,7 +7,6 @@ use pegasus_server::Decode;
 use crate::base::Decoder;
 use crate::buffer::batch::BufferPool;
 use crate::data::{Data, MiniScopeBatch};
-use crate::error::ErrMsg;
 
 pub struct BatchDecoder<T> {
     pool: BufferPool<T>,
@@ -26,17 +25,16 @@ where
 {
     type Item = MiniScopeBatch<T>;
 
-    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, ErrMsg> {
+    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, std::io::Error> {
         let batch = self.pool.fetch().await;
         let mut reader = bytes.as_ref();
-        match MiniScopeBatch::read_with(batch, &mut reader) {
-            Ok(b) => Ok(b),
-            Err(e) => Err(ErrMsg::Own(e.to_string())),
-        }
+        let b =  MiniScopeBatch::read_with(batch, &mut reader)?;
+        Ok(b)
     }
 }
 
 pub struct MultiScopeBatchDecoder<T> {
+    #[allow(dead_code)]
     pool: AHashMap<Tag, BufferPool<T>>,
 }
 
@@ -53,7 +51,7 @@ where
 {
     type Item = MiniScopeBatch<T>;
 
-    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, ErrMsg> {
+    async fn decode(&mut self, _bytes: Bytes) -> Result<Self::Item, std::io::Error> {
         todo!()
     }
 }

@@ -2,7 +2,7 @@ use pegasus_common::tag::Tag;
 
 use crate::data::Data;
 use crate::eos::Eos;
-use crate::error::IOResult;
+use crate::error::PushError;
 
 pub enum Pushed<T> {
     Finished,
@@ -13,17 +13,17 @@ pub enum Pushed<T> {
 /// A pusher which push streaming data into the underlying channel without blocking;
 /// The underlying channel of the push should be unbounded or non-blocking;
 pub trait StreamPush<T: Data> {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>>;
+    fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError>;
 
-    fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()>;
+    fn push_last(&mut self, msg: T, end: Eos) -> Result<(), PushError>;
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>>;
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError>;
 
-    fn notify_end(&mut self, end: Eos) -> IOResult<()>;
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError>;
 
-    fn flush(&mut self) -> IOResult<()>;
+    fn flush(&mut self) -> Result<(), PushError>;
 
-    fn close(&mut self) -> IOResult<()>;
+    fn close(&mut self) -> Result<(), PushError>;
 }
 
 pub trait Countable {
@@ -31,9 +31,9 @@ pub trait Countable {
 }
 
 pub trait Pinnable {
-    fn pin(&mut self, tag: &Tag) -> IOResult<bool>;
+    fn pin(&mut self, tag: &Tag) -> Result<bool, PushError>;
 
-    fn unpin(&mut self) -> IOResult<()>;
+    fn unpin(&mut self) -> Result<(), PushError>;
 }
 
 // pub struct MultiScopeStreamPush<T, P> {

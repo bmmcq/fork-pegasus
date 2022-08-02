@@ -11,10 +11,10 @@ use pegasus_common::config::ServerId;
 pub use valley::codec::*;
 use valley::connection::quic::QUIConnBuilder;
 use valley::connection::tcp::TcpConnBuilder;
-pub use valley::errors::VError as ServerError;
 use valley::name_service::StaticNameService;
 use valley::server::ValleyServer;
 pub use valley::ChannelId;
+pub use valley::errors::*;
 
 use crate::consumer::Consumer;
 use crate::naming::NameServiceImpl;
@@ -24,6 +24,7 @@ static GLOBAL_SERVER_PROXY: OnceCell<ServerInstance> = OnceCell::new();
 
 enum ServerKind {
     TCPServer(ValleyServer<NameServiceImpl, TcpConnBuilder>),
+    #[allow(dead_code)]
     QUICServer(ValleyServer<NameServiceImpl, QUIConnBuilder>),
 }
 
@@ -77,7 +78,7 @@ impl ServerInstance {
 
     pub async fn alloc_ipc_channel<T, R>(
         &self, ch_id: ChannelId, servers: &[ServerId], mut consumers: Vec<R>,
-    ) -> Result<HashMap<ServerId, Producer<T>>, ServerError>
+    ) -> Result<HashMap<ServerId, Producer<T>>, VError>
     where
         T: Encode + Send + 'static,
         R: Consumer + Send + 'static,
@@ -138,7 +139,9 @@ impl ServerInstance {
     }
 }
 
+
+pub mod error;
 pub mod consumer;
 pub mod producer;
-
 pub mod naming;
+

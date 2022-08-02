@@ -1,5 +1,6 @@
 use crate::data::{Data, MiniScopeBatch};
-use crate::{ChannelInfo, IOError, Push};
+use crate::error::PushError;
+use crate::{ChannelInfo, Push};
 
 pub struct BroadcastPush<T, P> {
     #[allow(dead_code)]
@@ -15,7 +16,7 @@ where
     T: Data + Clone,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), IOError> {
+    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), PushError> {
         let len = self.pushes.len();
         if let Some(eos) = msg.get_end_mut() {
             let count = eos.total_send as usize;
@@ -29,14 +30,14 @@ where
         self.pushes[0].push(msg)
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.flush()?;
         }
         Ok(())
     }
 
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.close()?;
         }

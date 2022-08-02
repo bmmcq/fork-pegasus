@@ -1,6 +1,7 @@
 use crate::data::{Data, MiniScopeBatch};
 use crate::output::Rectifier;
-use crate::{ChannelInfo, IOError, Push};
+use crate::error::PushError;
+use crate::{ChannelInfo, Push};
 
 pub struct AggregatePush<T, P> {
     #[allow(dead_code)]
@@ -17,7 +18,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), IOError> {
+    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), PushError> {
         if let Some(eos) = msg.get_end_mut() {
             let send = eos.total_send;
             eos.add_child_send(self.target, send as usize);
@@ -26,11 +27,11 @@ where
         self.push.push(msg)
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         self.push.flush()
     }
 
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.push.close()
     }
 }
@@ -50,7 +51,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), IOError> {
+    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), PushError> {
         assert!(!msg.tag.is_root());
         let target = self
             .rectifier
@@ -62,14 +63,14 @@ where
         self.pushes[target].push(msg)
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.flush()?;
         }
         Ok(())
     }
 
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.close()?;
         }

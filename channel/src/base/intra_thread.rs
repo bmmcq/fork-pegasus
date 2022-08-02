@@ -18,8 +18,8 @@ use std::collections::VecDeque;
 
 use pegasus_common::rc::UnsafeRcPtr;
 
-use crate::error::IOErrorKind;
-use crate::{ChannelId, IOError, Pull, Push};
+use crate::error::{PushError, PullError};
+use crate::{ChannelId, Pull, Push};
 
 pub struct ThreadPush<T> {
     pub id: ChannelId,
@@ -37,20 +37,18 @@ impl<T> ThreadPush<T> {
 
 impl<T: Send> Push<T> for ThreadPush<T> {
     #[inline]
-    fn push(&mut self, msg: T) -> Result<(), IOError> {
+    fn push(&mut self, msg: T) -> Result<(), PushError> {
         if !*self.is_closed.borrow() {
             self.queue.borrow_mut().push_back(msg);
             Ok(())
         } else {
-            error!("ThreadPush#push after close;");
-            let mut error = IOError::new(IOErrorKind::SendAfterClose);
-            error.set_ch_id(self.id);
+            let error = PushError::AlreadyClosed;
             Err(error)
         }
     }
 
     #[inline]
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         *self.is_closed.borrow_mut() = true;
         Ok(())
     }
@@ -71,15 +69,15 @@ impl<T> ThreadPull<T> {
 }
 
 impl<T: Send> Pull<T> for ThreadPull<T> {
-    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
+    fn pull_next(&mut self) -> Result<Option<T>, PullError> {
         match self.queue.borrow_mut().pop_front() {
             Some(t) => Ok(Some(t)),
             None => {
                 if *self.is_closed.borrow() {
                     // is closed;
-                    Err(IOError::eof())
+                    Err(PullError::Eof)
                 } else if self.queue.strong_count() == 1 {
-                    Err(IOErrorKind::UnexpectedEof)?
+                    Err(PullError::UnexpectedEof)?
                 } else {
                     Ok(None)
                 }
@@ -87,7 +85,7 @@ impl<T: Send> Pull<T> for ThreadPull<T> {
         }
     }
 
-    fn has_next(&mut self) -> Result<bool, IOError> {
+    fn has_next(&mut self) -> Result<bool, PullError> {
         Ok(!self.queue.borrow().is_empty())
     }
 }
@@ -105,7 +103,7 @@ mod test {
 
     #[test]
     fn thread_push_pull() {
-        let (mut tx, mut rx) = pipeline::<u64>(ChannelId::new(0, 0));
+        let (mut tx, mut rx) = pipeline::<u64>(ChannelId::from((0, 0)));
         for i in 0..65535 {
             tx.push(i).unwrap();
         }

@@ -16,8 +16,8 @@
 use pegasus_common::downcast::AsAny;
 
 use crate::eos::Eos;
-use crate::error::IOResult;
-use crate::Port;
+use crate::error::PushError;
+use crate::{Port};
 
 #[derive(Copy, Clone)]
 pub struct OutputInfo {
@@ -28,11 +28,11 @@ pub struct OutputInfo {
 pub trait Output: Send {
     fn info(&self) -> OutputInfo;
 
-    fn flush(&self) -> IOResult<()>;
+    fn flush(&self) -> Result<(), PushError>;
 
-    fn notify_eos(&self, end: Eos) -> IOResult<()>;
+    fn notify_eos(&self, end: Eos) -> Result<(), PushError>;
 
-    fn close(&self) -> IOResult<()>;
+    fn close(&self) -> Result<(), PushError>;
 
     fn is_closed(&self) -> bool;
 }

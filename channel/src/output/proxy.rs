@@ -2,7 +2,7 @@ use std::cell::{RefCell, RefMut};
 
 use crate::data::Data;
 use crate::eos::Eos;
-use crate::error::IOResult;
+use crate::error::PushError;
 use crate::output::delta::MergedScopeDelta;
 use crate::output::handle::{MultiScopeOutputHandle, OutputHandle};
 use crate::output::unify::EnumStreamBufPush;
@@ -32,15 +32,15 @@ impl<D: Data> Output for OutputProxy<D> {
         self.0.borrow().info()
     }
 
-    fn flush(&self) -> IOResult<()> {
+    fn flush(&self) -> Result<(), PushError> {
         self.0.borrow_mut().flush()
     }
 
-    fn notify_eos(&self, end: Eos) -> IOResult<()> {
+    fn notify_eos(&self, end: Eos) -> Result<(), PushError> {
         self.0.borrow_mut().notify_end(end)
     }
 
-    fn close(&self) -> IOResult<()> {
+    fn close(&self) -> Result<(), PushError> {
         self.0.borrow_mut().close()
     }
 
@@ -72,15 +72,15 @@ impl<D: Data> Output for MultiScopeOutputProxy<D> {
         self.0.borrow().info()
     }
 
-    fn flush(&self) -> IOResult<()> {
+    fn flush(&self) -> Result<(), PushError> {
         self.0.borrow_mut().flush()
     }
 
-    fn notify_eos(&self, end: Eos) -> IOResult<()> {
+    fn notify_eos(&self, end: Eos) -> Result<(), PushError> {
         self.0.borrow_mut().notify_end(end)
     }
 
-    fn close(&self) -> IOResult<()> {
+    fn close(&self) -> Result<(), PushError> {
         self.0.borrow_mut().close()
     }
 

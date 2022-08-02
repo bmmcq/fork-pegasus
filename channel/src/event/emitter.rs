@@ -5,8 +5,8 @@ use pegasus_common::rc::UnsafeRcPtr;
 
 use super::Event;
 use crate::base::{BasePull, BasePush};
-use crate::error::IOResult;
-use crate::{IOError, Pull, Push};
+use crate::error::{PushError, PullError};
+use crate::{Pull, Push};
 
 pub struct EventEmitter<P> {
     tx: UnsafeRcPtr<RefCell<Vec<P>>>,
@@ -34,14 +34,14 @@ impl<P> EventEmitter<P>
 where
     P: Push<Event>,
 {
-    pub fn send(&mut self, target: u16, event: Event) -> IOResult<()> {
+    pub fn send(&mut self, target: u16, event: Event) -> Result<(), PushError> {
         let offset = target as usize;
         let mut borrow = self.tx.borrow_mut();
         trace!("EventBus: send {:?} to {} port {:?};", event.kind, target, event.target_port);
         borrow[offset].push(event)
     }
 
-    pub fn broadcast(&mut self, event: Event) -> IOResult<()> {
+    pub fn broadcast(&mut self, event: Event) -> Result<(), PushError> {
         trace!("EventBus: broadcast {:?} to port {:?}", event.kind, event.target_port);
         let mut borrow = self.tx.borrow_mut();
         for i in 1..borrow.len() {
@@ -51,7 +51,7 @@ where
         Ok(())
     }
 
-    pub fn flush(&mut self) -> IOResult<()> {
+    pub fn flush(&mut self) -> Result<(), PushError> {
         let mut borrow = self.tx.borrow_mut();
         for p in borrow.iter_mut() {
             p.flush()?;
@@ -59,7 +59,7 @@ where
         Ok(())
     }
 
-    pub fn close(&mut self) -> IOResult<()> {
+    pub fn close(&mut self) -> Result<(), PushError> {
         let mut borrow = self.tx.borrow_mut();
         for p in borrow.iter_mut() {
             p.close()?;
@@ -85,7 +85,7 @@ impl<P> EventCollector<P>
 where
     P: Pull<Event>,
 {
-    pub fn collect(&mut self) -> Result<bool, IOError> {
+    pub fn collect(&mut self) -> Result<bool, PullError> {
         while let Some(event) = self.rx.pull_next()? {
             self.received.push_back(event);
         }

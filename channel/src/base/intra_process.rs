@@ -16,8 +16,8 @@
 use pegasus_common::channel::*;
 
 use crate::data::Data;
-use crate::error::IOErrorKind;
-use crate::{ChannelId, IOError, Pull, Push};
+use crate::error::{PushError, PullError};
+use crate::{ChannelId, Pull, Push};
 
 pub struct IntraProcessPush<T> {
     index: u16,
@@ -32,15 +32,15 @@ impl<T> IntraProcessPush<T> {
 }
 
 impl<T: Data> Push<T> for IntraProcessPush<T> {
-    fn push(&mut self, msg: T) -> Result<(), IOError> {
+    fn push(&mut self, msg: T) -> Result<(), PushError> {
         self.sender.send(msg).map_err(|_| {
             error!("IntraProcessPush({})#push: send data failure;", self.index);
-            IOError::new(IOErrorKind::SendToDisconnect)
+            PushError::Disconnected
         })
     }
 
     #[inline]
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.sender.close();
         Ok(())
     }
@@ -54,6 +54,7 @@ impl<T> Clone for IntraProcessPush<T> {
 
 pub struct IntraProcessPull<T> {
     is_closed: bool,
+    #[allow(dead_code)]
     ch_id: ChannelId,
     recv: MessageReceiver<T>,
     cached: Option<T>,
@@ -66,11 +67,9 @@ impl<T> IntraProcessPull<T> {
 }
 
 impl<T: Data> Pull<T> for IntraProcessPull<T> {
-    fn pull_next(&mut self) -> Result<Option<T>, IOError> {
+    fn pull_next(&mut self) -> Result<Option<T>, PullError> {
         if self.is_closed {
-            let mut eof = IOError::eof();
-            eof.set_ch_id(self.ch_id);
-            return Err(eof);
+            return Err(PullError::Eof);
         }
 
         if let Some(data) = self.cached.take() {
@@ -82,17 +81,15 @@ impl<T: Data> Pull<T> for IntraProcessPull<T> {
             Err(e) => {
                 if e.is_eof() {
                     self.is_closed = true;
-                    let mut eof = IOError::eof();
-                    eof.set_ch_id(self.ch_id);
-                    Err(eof)
+                    Err(PullError::Eof)
                 } else {
-                    Err(e)?
+                    Err(PullError::UnexpectedEof)
                 }
             }
         }
     }
 
-    fn has_next(&mut self) -> Result<bool, IOError> {
+    fn has_next(&mut self) -> Result<bool, PullError> {
         if self.cached.is_some() {
             Ok(true)
         } else {
@@ -105,7 +102,7 @@ impl<T: Data> Pull<T> for IntraProcessPull<T> {
                         if e.is_eof() {
                             self.is_closed = true;
                         } else {
-                            return Err(e)?;
+                            return Err(PullError::UnexpectedEof);
                         }
                     }
                 }

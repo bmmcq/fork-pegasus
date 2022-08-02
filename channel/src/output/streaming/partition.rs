@@ -1,10 +1,7 @@
-use std::error::Error;
-
 use pegasus_common::tag::Tag;
-
 use crate::data::Data;
 use crate::eos::Eos;
-use crate::error::IOResult;
+use crate::error::PushError;
 use crate::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
 use crate::output::Rectifier;
 use crate::ChannelInfo;
@@ -12,7 +9,7 @@ use crate::ChannelInfo;
 pub trait PartitionRoute {
     type Item;
 
-    fn partition_by(&self, item: &Self::Item) -> Result<u64, Box<dyn Error + Send + 'static>>;
+    fn partition_by(&self, item: &Self::Item) -> Result<u64, anyhow::Error>;
 }
 
 struct Partitioner<D> {
@@ -30,7 +27,7 @@ impl<D> Partitioner<D> {
     }
 
     #[inline]
-    fn get_partition(&self, item: &D) -> Result<usize, Box<dyn Error + Send + 'static>> {
+    fn get_partition(&self, item: &D) -> Result<usize, anyhow::Error> {
         let par_key = self.router.partition_by(item)?;
         Ok(self.rectifier.get(par_key))
     }
@@ -58,7 +55,7 @@ where
     T: Data,
     P: StreamPush<T> + Pinnable,
 {
-    fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
+    fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         for p in self.pushes.iter_mut() {
             if !p.pin(tag)? {
                 return Ok(false);
@@ -67,7 +64,7 @@ where
         Ok(true)
     }
 
-    fn unpin(&mut self) -> IOResult<()> {
+    fn unpin(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.unpin()?;
         }
@@ -80,13 +77,13 @@ where
     T: Data,
     P: StreamPush<T> + Countable + Pinnable,
 {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
+    fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
         let target = self.route.get_partition(&msg)?;
         self.pushes[target].push(tag, msg)
     }
 
-    fn push_last(&mut self, msg: T, mut end: Eos) -> IOResult<()> {
+    fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(end.tag.len(), self.ch_info.scope_level as usize);
         assert_eq!(end.child_peers().len(), 0);
         end.total_send = 0;
@@ -106,7 +103,7 @@ where
         self.pushes[target].push_last(msg, end)
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
 
         for p in self.pushes.iter_mut() {
@@ -124,7 +121,7 @@ where
         Ok(Pushed::Finished)
     }
 
-    fn notify_end(&mut self, mut eos: Eos) -> IOResult<()> {
+    fn notify_end(&mut self, mut eos: Eos) -> Result<(), PushError> {
         assert_eq!(eos.tag.len(), self.ch_info.scope_level as usize);
         assert_eq!(eos.child_peers().len(), 0);
 
@@ -142,14 +139,14 @@ where
         self.pushes[0].notify_end(eos)
     }
 
-    fn flush(&mut self) -> IOResult<()> {
+    fn flush(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.flush()?;
         }
         Ok(())
     }
 
-    fn close(&mut self) -> IOResult<()> {
+    fn close(&mut self) -> Result<(), PushError> {
         for p in self.pushes.iter_mut() {
             p.close()?;
         }

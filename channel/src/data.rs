@@ -1,6 +1,5 @@
 use std::fmt::Debug;
 
-use pegasus_common::io::{ReadExt, WriteExt};
 use pegasus_common::tag::Tag;
 use pegasus_server::{Buf, BufMut, Decode, Encode};
 
@@ -63,7 +62,7 @@ impl<T: Encode> Encode for MiniBatch<T> {
 }
 
 impl<T: Decode> Decode for MiniBatch<T> {
-    fn read_from<R: Buf>(reader: &mut R) -> std::io::Result<Self> {
+    fn read_from<R: Buf>(_reader: &mut R) -> std::io::Result<Self> {
         todo!()
     }
 }
@@ -175,13 +174,13 @@ impl<D: Clone> Clone for MiniScopeBatch<D> {
 }
 
 impl<D: Encode> Encode for MiniScopeBatch<D> {
-    fn write_to<W: BufMut>(&self, writer: &mut W) {
+    fn write_to<W: BufMut>(&self, _writer: &mut W) {
         todo!()
     }
 }
 
 impl<D: Decode> Decode for MiniScopeBatch<D> {
-    fn read_from<R: Buf>(reader: &mut R) -> std::io::Result<Self> {
+    fn read_from<R: Buf>(_reader: &mut R) -> std::io::Result<Self> {
         todo!()
     }
 }

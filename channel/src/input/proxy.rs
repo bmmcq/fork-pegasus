@@ -6,7 +6,7 @@ use pegasus_common::tag::Tag;
 use crate::base::BasePull;
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
-use crate::error::IOResult;
+use crate::error::PullError;
 use crate::input::handle::{InputHandle, MultiScopeInputHandle};
 use crate::input::{Input, InputInfo};
 use crate::output::AnyOutput;
@@ -40,11 +40,11 @@ where
         self.0.borrow().info()
     }
 
-    fn check_ready(&self) -> IOResult<bool> {
+    fn check_ready(&self) -> Result<bool, PullError> {
         self.0.borrow_mut().check_ready()
     }
 
-    fn notify_eos(&self, eos: Eos) -> IOResult<()> {
+    fn notify_eos(&self, eos: Eos) -> Result<(), PullError> {
         self.0.borrow_mut().notify_eos(eos)
     }
 
@@ -79,11 +79,11 @@ where
         self.0.borrow().info()
     }
 
-    fn check_ready(&self) -> IOResult<bool> {
+    fn check_ready(&self) -> Result<bool, PullError> {
         self.0.borrow_mut().check_ready()
     }
 
-    fn notify_eos(&self, eos: Eos) -> IOResult<()> {
+    fn notify_eos(&self, eos: Eos) -> Result<(), PullError> {
         self.0.borrow_mut().notify_eos(eos)
     }
 

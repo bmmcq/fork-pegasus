@@ -41,6 +41,7 @@ impl JobServerConfig {
     }
 }
 
+#[allow(dead_code)]
 pub struct JobConfig {
     job_id: u64,
     default_batch_size: u16,

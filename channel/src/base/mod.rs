@@ -5,7 +5,7 @@ use pegasus_server::{Decode, ServerInstance};
 
 pub use crate::base::inter_processes::{Decoder, SimpleDecoder};
 use crate::data::Data;
-use crate::error::IOError;
+use crate::error::{IOError, PushError, PullError};
 use crate::{ChannelId, Pull, Push};
 
 mod inter_processes;

@@ -77,7 +77,7 @@ where
                 decoders.push(BatchDecoder::new(recv_buf));
             }
 
-            let mut list = crate::base::alloc_cluster_exchange(ch_info.ch_id, config, decoders).await?;
+            let list = crate::base::alloc_cluster_exchange(ch_info.ch_id, config, decoders).await?;
             let mut to_local_recv_bufs =
                 std::mem::replace(&mut recv_buffers, VecDeque::with_capacity(local_peers as usize));
             for i in 0..total_peers {
@@ -141,7 +141,7 @@ pub async fn alloc_event_channel(
             crate::base::alloc_local_exchange(peers, ch_id)
         } else {
             let mut decoders = Vec::with_capacity(peers as usize);
-            for i in 0..peers {
+            for _ in 0..peers {
                 decoders.push(SimpleDecoder::new())
             }
             crate::base::alloc_cluster_exchange(ch_id, config, decoders)

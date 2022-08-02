@@ -20,7 +20,7 @@ use crate::abort::AbortHandle;
 use crate::block::{BlockEntry, BlockHandle, BlockKind};
 use crate::data::Data;
 use crate::eos::Eos;
-use crate::error::{IOErrorKind, IOResult};
+use crate::error::PushError;
 use crate::output::delta::MergedScopeDelta;
 use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::output::OutputInfo;
@@ -57,16 +57,16 @@ where
         }
     }
 
-    pub fn new_session(&mut self, tag: Tag) -> IOResult<OutputSession<D, T>> {
+    pub fn new_session(&mut self, tag: Tag) -> Result<OutputSession<D, T>, PushError> {
         assert!(tag.is_root());
         if self.is_aborted {
-            Err(IOErrorKind::DataAborted(tag))?
+            Err(PushError::Aborted(tag))
         } else {
             OutputSession::new(self.tag.clone(), self)
         }
     }
 
-    pub fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+    pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(self.tag, end.tag);
         assert!(self.blocked.is_none());
         let tag = self.scope_delta.evolve(&end.tag);
@@ -74,11 +74,11 @@ where
         self.output.notify_end(end)
     }
 
-    pub fn flush(&mut self) -> IOResult<()> {
+    pub fn flush(&mut self) -> Result<(), PushError> {
         self.output.flush()
     }
 
-    pub fn close(&mut self) -> IOResult<()> {
+    pub fn close(&mut self) -> Result<(), PushError> {
         self.is_closed = true;
         self.output.close()
     }
@@ -101,7 +101,7 @@ where
         self.blocked.is_some()
     }
 
-    fn try_unblock(&mut self) -> IOResult<()> {
+    fn try_unblock(&mut self) -> Result<(), PushError> {
         if let Some(mut block) = self.blocked.take() {
             let kind = block.take_block();
             match kind {
@@ -175,11 +175,11 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    fn new(tag: Tag, output: &'a mut OutputHandle<D, T>) -> IOResult<Self> {
+    fn new(tag: Tag, output: &'a mut OutputHandle<D, T>) -> Result<Self, PushError> {
         Ok(Self { tag, output })
     }
 
-    pub fn give(&mut self, msg: D) -> IOResult<()> {
+    pub fn give(&mut self, msg: D) -> Result<(), PushError> {
         assert!(self.output.blocked.is_none());
         match self.output.output.push(&self.tag, msg)? {
             Pushed::Finished => Ok(()),
@@ -187,18 +187,18 @@ where
                 let entry = BlockEntry::one(self.tag.clone(), msg);
                 let hook = entry.get_hook();
                 self.output.blocked = Some(entry);
-                Err(IOErrorKind::WouldBlock(Some(hook.take())))?
+                Err(PushError::WouldBlock(Some(hook.take())))?
             }
-            Pushed::WouldBlock(None) => Err(IOErrorKind::WouldBlock(None))?,
+            Pushed::WouldBlock(None) => Err(PushError::WouldBlock(None))?,
         }
     }
 
-    pub fn give_last(&mut self, msg: D, end: Eos) -> IOResult<()> {
+    pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
         assert!(self.output.blocked.is_none());
         self.output.output.push_last(msg, end)
     }
 
-    pub fn give_iterator<I>(&mut self, mut iter: I) -> IOResult<()>
+    pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
     where
         I: Iterator<Item = D> + Send + 'static,
     {
@@ -213,16 +213,16 @@ where
                 let entry = BlockEntry::iter(self.tag.clone(), head, iter);
                 let hook = entry.get_hook();
                 self.output.blocked = Some(entry);
-                Err(IOErrorKind::WouldBlock(Some(hook.take())))?
+                Err(PushError::WouldBlock(Some(hook.take())))?
             }
         }
     }
 
-    pub fn notify_end(&mut self, end: Eos) -> IOResult<()> {
+    pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         self.output.notify_end(end)
     }
 
-    pub fn flush(&mut self) -> IOResult<()> {
+    pub fn flush(&mut self) -> Result<(), PushError> {
         self.output.flush()
     }
 }
@@ -255,7 +255,7 @@ where
         }
     }
 
-    pub fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+    pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         let tag = self.scope_delta.evolve(&end.tag);
         assert!(!self.blocks.contains_key(&tag));
         self.aborts.remove(&tag);
@@ -263,11 +263,11 @@ where
         self.output.notify_end(end)
     }
 
-    pub fn flush(&mut self) -> IOResult<()> {
+    pub fn flush(&mut self) -> Result<(), PushError> {
         self.output.flush()
     }
 
-    pub fn close(&mut self) -> IOResult<()> {
+    pub fn close(&mut self) -> Result<(), PushError> {
         self.is_closed = true;
         self.output.close()
     }
@@ -286,9 +286,9 @@ where
     D: Data,
     T: StreamPush<D> + Pinnable + Send + 'static,
 {
-    pub fn new_session(&mut self, tag: Tag) -> IOResult<MultiScopeOutputSession<D, T>> {
+    pub fn new_session(&mut self, tag: Tag) -> Result<MultiScopeOutputSession<D, T>, PushError> {
         if self.aborts.contains(&tag) {
-            Err(IOErrorKind::DataAborted(tag))?
+            Err(PushError::Aborted(tag))?
         } else {
             MultiScopeOutputSession::new(tag, self)
         }
@@ -304,7 +304,7 @@ where
         self.blocks.is_empty()
     }
 
-    fn try_unblock(&mut self) -> IOResult<()> {
+    fn try_unblock(&mut self) -> Result<(), PushError> {
         for block in self.blocks.values_mut() {
             let kind = block.take_block();
             match kind {
@@ -402,16 +402,16 @@ where
     D: Data,
     T: StreamPush<D> + Pinnable + Send + 'static,
 {
-    fn new(tag: Tag, output: &'a mut MultiScopeOutputHandle<D, T>) -> IOResult<Self> {
+    fn new(tag: Tag, output: &'a mut MultiScopeOutputHandle<D, T>) -> Result<Self, PushError> {
         let push_tag = output.scope_delta.evolve(&tag);
         assert!(!output.blocks.contains_key(&push_tag));
         if !output.output.pin(&push_tag)? {
-            Err(IOErrorKind::WouldBlock(None))?;
+            Err(PushError::WouldBlock(None))?;
         }
         Ok(Self { tag: push_tag, is_blocked: false, output })
     }
 
-    pub fn give(&mut self, msg: D) -> IOResult<()> {
+    pub fn give(&mut self, msg: D) -> Result<(), PushError> {
         assert!(!self.is_blocked, "can't send message after block;");
         match self.output.output.push(&self.tag, msg)? {
             Pushed::Finished => Ok(()),
@@ -422,21 +422,21 @@ where
                     .blocks
                     .insert(self.tag.clone(), block);
                 self.is_blocked = true;
-                Err(IOErrorKind::WouldBlock(Some(hook.take())))?
+                Err(PushError::WouldBlock(Some(hook.take())))?
             }
             Pushed::WouldBlock(None) => {
                 self.is_blocked = true;
-                Err(IOErrorKind::WouldBlock(None))?
+                Err(PushError::WouldBlock(None))?
             }
         }
     }
 
-    pub fn give_last(&mut self, msg: D, end: Eos) -> IOResult<()> {
+    pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
         assert!(!self.is_blocked, "can't send message after block;");
         self.output.output.push_last(msg, end)
     }
 
-    pub fn give_iterator<I>(&mut self, mut iter: I) -> IOResult<()>
+    pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
     where
         I: Iterator<Item = D> + Send + 'static,
     {
@@ -453,16 +453,16 @@ where
                 self.output
                     .blocks
                     .insert(self.tag.clone(), entry);
-                Err(IOErrorKind::WouldBlock(Some(hook.take())))?
+                Err(PushError::WouldBlock(Some(hook.take())))?
             }
         }
     }
 
-    pub fn notify_end(&mut self, end: Eos) -> IOResult<()> {
+    pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         self.output.notify_end(end)
     }
 
-    pub fn flush(&mut self) -> IOResult<()> {
+    pub fn flush(&mut self) -> Result<(), PushError> {
         self.output.flush()
     }
 }

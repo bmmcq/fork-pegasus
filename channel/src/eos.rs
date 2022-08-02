@@ -1,8 +1,9 @@
 use std::fmt::{Debug, Display, Formatter};
 
 use nohash_hasher::IntSet;
-use pegasus_common::codec::{Decode, Encode, ReadExt, WriteExt};
+use pegasus_common::codec::Buf;
 use pegasus_common::tag::Tag;
+use pegasus_server::{BufMut, Decode, Encode};
 
 #[derive(Clone, Debug)]
 pub enum PeerSet {
@@ -142,53 +143,14 @@ impl Display for PeerSet {
 }
 
 impl Encode for PeerSet {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
-        match self {
-            PeerSet::Empty => writer.write_u8(0),
-            PeerSet::One(x) => {
-                writer.write_u8(1)?;
-                writer.write_u16(*x)
-            }
-            PeerSet::Partial(s) => {
-                writer.write_u8(2)?;
-                writer.write_u32(s.len() as u32)?;
-                for x in s.iter() {
-                    writer.write_u16(*x)?;
-                }
-                Ok(())
-            }
-            PeerSet::Range(l, r) => {
-                writer.write_u8(3)?;
-                writer.write_u16(*l)?;
-                writer.write_u16(*r)
-            }
-        }
+    fn write_to<W: BufMut>(&self, _writer: &mut W) {
+        todo!()
     }
 }
 
 impl Decode for PeerSet {
-    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let mode = reader.read_u8()?;
-        if mode == 0 {
-            Ok(PeerSet::Empty)
-        } else if mode == 1 {
-            let x = reader.read_u16()?;
-            Ok(PeerSet::One(x))
-        } else if mode == 2 {
-            let len = reader.read_u32()? as usize;
-            let mut set = IntSet::default();
-            for _ in 0..len {
-                let x = reader.read_u16()?;
-                set.insert(x);
-            }
-            Ok(PeerSet::Partial(set))
-        } else if mode == 3 {
-            let from = reader.read_u16()?;
-            let to = reader.read_u16()?;
-            Ok(PeerSet::Range(from, to))
-        } else {
-            Err(std::io::ErrorKind::InvalidData)?
-        }
+    fn read_from<R: Buf>(_reader: &mut R) -> std::io::Result<Self> {
+        todo!()
     }
 }
 
@@ -245,23 +207,14 @@ impl Debug for Eos {
 }
 
 impl Encode for Eos {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> std::io::Result<()> {
-        writer.write_u64(self.total_send)?;
-        writer.write_u64(self.global_total_send)?;
-        self.tag.write_to(writer)?;
-        self.parent_peers.write_to(writer)?;
-        self.child_peers.write_to(writer)
+    fn write_to<W: BufMut>(&self, _writer: &mut W) {
+        todo!()
     }
 }
 
 impl Decode for Eos {
-    fn read_from<R: ReadExt>(reader: &mut R) -> std::io::Result<Self> {
-        let total_send = reader.read_u64()?;
-        let global_total_send = reader.read_u64()?;
-        let tag = Tag::read_from(reader)?;
-        let parent_peers = PeerSet::read_from(reader)?;
-        let child_peers = PeerSet::read_from(reader)?;
-        Ok(Eos { tag, total_send, global_total_send, parent_peers, child_peers })
+    fn read_from<R: Buf>(_reader: &mut R) -> std::io::Result<Self> {
+        todo!()
     }
 }
 

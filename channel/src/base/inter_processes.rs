@@ -1,4 +1,3 @@
-use std::error::Error;
 
 use async_trait::async_trait;
 use pegasus_common::bytes::Bytes;
@@ -9,14 +8,14 @@ use pegasus_server::{Decode, Encode};
 
 use crate::base::intra_process::IntraProcessPush;
 use crate::data::Data;
-use crate::error::{ErrMsg, IOErrorKind};
-use crate::{IOError, Push};
+use crate::error::PushError;
+use crate::{Push};
 
 #[async_trait]
 pub trait Decoder {
     type Item: Decode;
 
-    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, ErrMsg>;
+    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, std::io::Error>;
 }
 
 pub struct SimpleDecoder<T>(std::marker::PhantomData<T>);
@@ -34,15 +33,14 @@ where
 {
     type Item = T;
 
-    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, ErrMsg> {
-        match T::read_from(&mut bytes.as_ref()) {
-            Ok(item) => Ok(item),
-            Err(e) => Err(ErrMsg::Own(e.to_string())),
-        }
+    async fn decode(&mut self, bytes: Bytes) -> Result<Self::Item, std::io::Error> {
+        let item = T::read_from(&mut bytes.as_ref())?;
+        Ok(item)
     }
 }
 
 pub struct RemotePush<T> {
+    #[allow(dead_code)]
     target_server: ServerId,
     target_worker: u8,
     send: Producer<T>,
@@ -56,17 +54,17 @@ impl<T> RemotePush<T> {
 }
 
 impl<T: Send + Encode> Push<T> for RemotePush<T> {
-    fn push(&mut self, msg: T) -> Result<(), IOError> {
+    fn push(&mut self, msg: T) -> Result<(), PushError> {
         self.send.send(self.target_worker, msg)?;
         Ok(())
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         self.send.flush()?;
         Ok(())
     }
 
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.send.close()?;
         Ok(())
     }
@@ -89,13 +87,13 @@ where
     T: Decode + Data,
     D: Decoder<Item = T> + Send + 'static,
 {
-    async fn consume(&mut self, msg: Bytes) -> Result<(), Box<dyn Error>> {
+    async fn consume(&mut self, msg: Bytes) -> Result<(), anyhow::Error> {
         match self.decoder.decode(msg).await {
             Ok(item) => {
                 self.forward.push(item)?;
                 Ok(())
             }
-            Err(msg) => Err(Box::new(IOError::new(IOErrorKind::DecodeError(msg)))),
+            Err(e) => Err(anyhow::Error::msg(format!("decode error: {}", e))),
         }
     }
 

@@ -1,7 +1,6 @@
 use std::net::SocketAddr;
 
 use async_trait::async_trait;
-use valley::errors::VError;
 use valley::name_service::{NameService, StaticNameService};
 use valley::ServerId;
 
@@ -16,7 +15,7 @@ pub enum NameServiceImpl {
 
 #[async_trait]
 impl NameService for NameServiceImpl {
-    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), VError> {
+    async fn register(&self, server_id: ServerId, addr: SocketAddr) -> Result<(), anyhow::Error> {
         match self {
             NameServiceImpl::StaticConfig(n) => n.register(server_id, addr).await,
             NameServiceImpl::ETCD(_) => {
@@ -26,7 +25,7 @@ impl NameService for NameServiceImpl {
         }
     }
 
-    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, VError> {
+    async fn get_registered(&self, server_id: ServerId) -> Result<Option<SocketAddr>, anyhow::Error> {
         match self {
             NameServiceImpl::StaticConfig(n) => n.get_registered(server_id).await,
             NameServiceImpl::ETCD(_) => {

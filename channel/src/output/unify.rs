@@ -4,7 +4,7 @@ use pegasus_server::Encode;
 use crate::base::{BasePull, BasePush};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
-use crate::error::IOResult;
+use crate::error::PushError;
 use crate::event::Event;
 use crate::output::batched::aggregate::{AggregateByScopePush, AggregatePush};
 use crate::output::batched::evented::EventEosBatchPush;
@@ -44,7 +44,7 @@ where
 }
 
 impl<T: Data> Pinnable for EnumStreamBufPush<T> {
-    fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
+    fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.pin(tag),
             EnumStreamBufPush::MultiScopePipeline(p) => p.pin(tag),
@@ -56,7 +56,7 @@ impl<T: Data> Pinnable for EnumStreamBufPush<T> {
         }
     }
 
-    fn unpin(&mut self) -> IOResult<()> {
+    fn unpin(&mut self) -> Result<(), PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.unpin(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.unpin(),
@@ -70,7 +70,7 @@ impl<T: Data> Pinnable for EnumStreamBufPush<T> {
 }
 
 impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
+    fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.push(tag, msg),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push(tag, msg),
@@ -82,7 +82,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn push_last(&mut self, msg: T, end: Eos) -> IOResult<()> {
+    fn push_last(&mut self, msg: T, end: Eos) -> Result<(), PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.push_last(msg, end),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push_last(msg, end),
@@ -94,7 +94,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.push_iter(tag, iter),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push_iter(tag, iter),
@@ -106,7 +106,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn notify_end(&mut self, end: Eos) -> IOResult<()> {
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.notify_end(end),
             EnumStreamBufPush::MultiScopePipeline(p) => p.notify_end(end),
@@ -118,7 +118,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn flush(&mut self) -> IOResult<()> {
+    fn flush(&mut self) -> Result<(), PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.flush(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.flush(),
@@ -130,7 +130,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn close(&mut self) -> IOResult<()> {
+    fn close(&mut self) -> Result<(), PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.close(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.close(),

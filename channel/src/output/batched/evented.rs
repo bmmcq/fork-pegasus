@@ -1,7 +1,8 @@
 use crate::data::{Data, MiniScopeBatch};
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
-use crate::{IOError, Port, Push};
+use crate::error::PushError;
+use crate::{Port, Push};
 
 pub struct EventEosBatchPush<T, PD, PE> {
     worker_index: u16,
@@ -26,7 +27,7 @@ where
     PD: Push<MiniScopeBatch<T>>,
     PE: Push<Event>,
 {
-    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), IOError> {
+    fn push(&mut self, mut msg: MiniScopeBatch<T>) -> Result<(), PushError> {
         let mut event_eos = None;
         if let Some(end) = msg.take_end() {
             assert!(end.has_parent(self.worker_index), "unexpected eos");
@@ -46,11 +47,11 @@ where
         Ok(())
     }
 
-    fn flush(&mut self) -> Result<(), IOError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         self.inner.flush()
     }
 
-    fn close(&mut self) -> Result<(), IOError> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.inner.close()
     }
 }

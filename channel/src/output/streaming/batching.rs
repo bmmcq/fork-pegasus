@@ -5,9 +5,9 @@ use crate::buffer::batch::{BufferPool, RoBatch, WoBatch};
 use crate::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
-use crate::error::IOResult;
 use crate::output::streaming::{Countable, Pinnable, Pushed, StreamPush};
-use crate::{ChannelInfo, IOError, Push};
+use crate::error::PushError;
+use crate::{ChannelInfo, Push};
 
 pub struct BufStreamPush<T, P> {
     #[allow(dead_code)]
@@ -53,11 +53,11 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
+    fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         Ok(*tag == self.tag)
     }
 
-    fn unpin(&mut self) -> IOResult<()> {
+    fn unpin(&mut self) -> Result<(), PushError> {
         self.flush()
     }
 }
@@ -75,7 +75,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
+    fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag, &self.tag);
         match self.buffer.add(msg) {
             Ok(Some(batch)) => {
@@ -88,7 +88,7 @@ where
         }
     }
 
-    fn push_last(&mut self, msg: T, mut end: Eos) -> IOResult<()> {
+    fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(end.tag, self.tag);
         let batch = self.buffer.add_last(msg);
         let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, batch);
@@ -98,7 +98,7 @@ where
         self.inner.push(batch)
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag, &self.tag);
         let result = self.buffer.drain_to(iter, &mut self.batches);
         for batch in self.batches.drain(..) {
@@ -113,7 +113,7 @@ where
         }
     }
 
-    fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+    fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(end.tag, self.tag);
         let mut batch = if let Some(batch) = self.buffer.exhaust() {
             let batch = MiniScopeBatch::new(self.tag.clone(), self.worker_index, batch);
@@ -128,7 +128,7 @@ where
         self.inner.push(batch)
     }
 
-    fn flush(&mut self) -> IOResult<()> {
+    fn flush(&mut self) -> Result<(), PushError> {
         if let Some(buf) = self.buffer.flush() {
             let batch = MiniScopeBatch::new(self.tag.clone(), self.worker_index, buf);
             self.total_send += batch.len();
@@ -139,7 +139,7 @@ where
         }
     }
 
-    fn close(&mut self) -> IOResult<()> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.inner.close()
     }
 }
@@ -198,7 +198,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn get_or_create_buffer(&mut self, tag: &Tag) -> Result<Option<BufferPtr<T>>, IOError> {
+    fn get_or_create_buffer(&mut self, tag: &Tag) -> Result<Option<BufferPtr<T>>, PushError> {
         if let Some((pin, buffer)) = self.pinned.as_ref() {
             if pin == tag {
                 return Ok(Some(buffer.clone()));
@@ -212,7 +212,7 @@ where
         }
     }
 
-    fn flush_pin(&mut self) -> Result<(), IOError> {
+    fn flush_pin(&mut self) -> Result<(), PushError> {
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if let Some(buf) = buffer.flush() {
                 let batch = MiniScopeBatch::new(pin.clone(), self.worker_index, buf);
@@ -229,7 +229,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn pin(&mut self, tag: &Tag) -> IOResult<bool> {
+    fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if &pin == tag {
                 self.pinned = Some((pin, buffer));
@@ -251,7 +251,7 @@ where
         }
     }
 
-    fn unpin(&mut self) -> IOResult<()> {
+    fn unpin(&mut self) -> Result<(), PushError> {
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if let Some(buf) = buffer.flush() {
                 let batch = MiniScopeBatch::new(pin.clone(), self.worker_index, buf);
@@ -268,7 +268,7 @@ where
     T: Data,
     P: Push<MiniScopeBatch<T>>,
 {
-    fn push(&mut self, tag: &Tag, msg: T) -> IOResult<Pushed<T>> {
+    fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         if let Some(mut buffer) = self.get_or_create_buffer(tag)? {
             match buffer.add(msg) {
                 Ok(Some(buf)) => {
@@ -285,7 +285,7 @@ where
         }
     }
 
-    fn push_last(&mut self, msg: T, mut end: Eos) -> IOResult<()> {
+    fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
         let last = if let Some(mut buffer) = self.get_or_create_buffer(&end.tag)? {
             buffer.add_last(msg)
         } else {
@@ -305,7 +305,7 @@ where
         self.inner.push(batch)
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> IOResult<Pushed<T>> {
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
         if let Some(mut buffer) = self.get_or_create_buffer(tag)? {
             let result = buffer.drain_to(iter, &mut self.batches);
             if !self.batches.is_empty() {
@@ -326,7 +326,7 @@ where
         }
     }
 
-    fn notify_end(&mut self, mut end: Eos) -> IOResult<()> {
+    fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         let mut last = RoBatch::default();
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if pin == end.tag {
@@ -354,7 +354,7 @@ where
         self.inner.push(batch)
     }
 
-    fn flush(&mut self) -> IOResult<()> {
+    fn flush(&mut self) -> Result<(), PushError> {
         self.pinned.take();
         for (tag, buffer) in self.scope_buffers.get_all_mut() {
             if let Some(b) = buffer.flush() {
@@ -365,7 +365,7 @@ where
         Ok(())
     }
 
-    fn close(&mut self) -> IOResult<()> {
+    fn close(&mut self) -> Result<(), PushError> {
         self.inner.close()
     }
 }
