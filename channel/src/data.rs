@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use pegasus_common::tag::Tag;
 use pegasus_server::{Buf, BufMut, Decode, Encode};
 
-use crate::buffer::batch::{RoBatch, WoBatch};
+use crate::buffer::pool::{RoBatch, WoBatch};
 use crate::eos::Eos;
 
 /// The constraint of data that can be delivered through the channel;
@@ -174,8 +174,20 @@ impl<D: Clone> Clone for MiniScopeBatch<D> {
 }
 
 impl<D: Encode> Encode for MiniScopeBatch<D> {
-    fn write_to<W: BufMut>(&self, _writer: &mut W) {
-        todo!()
+    fn write_to<W: BufMut>(&self, writer: &mut W) {
+        self.tag.write_to(writer);
+        writer.put_u16(self.src);
+        if let Some(eos) = self.end.as_ref() {
+            writer.put_u8(0);
+            eos.write_to(writer);
+        } else {
+            writer.put_u8(1);
+        }
+        let len = self.data.len() as u32;
+        writer.put_u32(len);
+        for item in self.data.iter() {
+            item.write_to(writer)
+        }
     }
 }
 

@@ -1,12 +1,14 @@
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
+use std::sync::Arc;
 
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
+use crate::buffer::pool::{LocalScopedBufferPool, ScopedBufferPool, SharedScopedBufferPool};
 
-pub mod batch;
+pub mod pool;
 pub mod decoder;
-use self::batch::{BufferPool, RoBatch, WoBatch};
+use self::pool::{BufferPool, RoBatch, WoBatch};
 
 pub struct WouldBlock;
 
@@ -109,10 +111,6 @@ impl<D> BoundedBuffer<D> {
         None
     }
 
-    fn reuse(&mut self) {
-        self.exhaust = false;
-    }
-
     pub fn len(&self) -> usize {
         self.buffer
             .as_ref()
@@ -120,8 +118,8 @@ impl<D> BoundedBuffer<D> {
             .unwrap_or_default()
     }
 
-    fn is_idle(&self) -> bool {
-        self.exhaust && self.pool.is_idle()
+    pub fn take(self) -> (Option<WoBatch<D>>, BufferPool<D>) {
+        (self.buffer, self.pool)
     }
 }
 
@@ -138,10 +136,10 @@ impl<D> BufferPtr<D> {
         BufferPtr { ptr }
     }
 
-    fn destroy(&mut self) {
+    fn take(self) -> (Option<WoBatch<D>>, BufferPool<D>) {
         unsafe {
             let ptr = self.ptr;
-            Box::from_raw(ptr.as_ptr());
+            Box::from_raw(ptr.as_ptr()).take()
         }
     }
 }
@@ -167,21 +165,25 @@ impl<D> DerefMut for BufferPtr<D> {
 }
 
 pub struct ScopeBuffer<D> {
-    batch_size: u16,
-    batch_capacity: u16,
-    max_concurrent_scopes: u16,
     scope_buffers: AHashMap<Tag, BufferPtr<D>>,
+    scope_buf_slots: ScopedBufferPool<D>
 }
 
 unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
-    pub fn new(batch_size: u16, batch_capacity: u16) -> Self {
-        ScopeBuffer {
-            batch_size,
-            batch_capacity,
-            max_concurrent_scopes: u16::MAX,
+
+    pub fn new(batch_size: u16, batch_capacity: u16, scope_slots: u16) -> Self {
+        Self {
             scope_buffers: AHashMap::new(),
+            scope_buf_slots: ScopedBufferPool::Local(LocalScopedBufferPool::new(batch_size, batch_capacity, scope_slots))
+        }
+    }
+
+    pub fn with_slot(slots: Arc<SharedScopedBufferPool<D>>) -> Self {
+        Self {
+            scope_buffers: AHashMap::new(),
+            scope_buf_slots: ScopedBufferPool::Shared(slots)
         }
     }
 
@@ -197,36 +199,18 @@ impl<D> ScopeBuffer<D> {
         if let Some(slot) = self.scope_buffers.get(tag) {
             Some(slot.clone())
         } else {
-            if self.scope_buffers.len() == 0 {
-                Some(self.create_new_buffer_slot(tag))
-            } else {
-                let mut find = None;
-                for (t, b) in self.scope_buffers.iter() {
-                    if b.is_idle() {
-                        find = Some((&*t).clone());
-                        break;
-                    } else {
-                        //trace_worker!("slot of {:?} is in use: is_end = {}, in use ={}", t, b.end, b.pool.in_use_size());
-                    }
-                }
+           self.scope_buf_slots.alloc_slot(tag)
+                .map(|slot| BufferPtr::new(BoundedBuffer::with_pool(slot)))
+        }
+    }
 
-                if let Some(f) = find {
-                    let mut slot = self
-                        .scope_buffers
-                        .remove(&f)
-                        .expect("find lost");
-                    // trace_worker!("reuse idle buffer slot for scope {:?};", tag);
-                    slot.reuse();
-                    assert!(slot.buffer.is_none());
-                    let ptr = slot.clone();
-                    self.scope_buffers.insert(tag.clone(), slot);
-                    Some(ptr)
-                } else if self.scope_buffers.len() < self.max_concurrent_scopes as usize {
-                    Some(self.create_new_buffer_slot(tag))
-                } else {
-                    None
-                }
-            }
+    pub fn release(&mut self, tag: &Tag) -> Option<WoBatch<D>> {
+        if let Some(buf) = self.scope_buffers.remove(tag) {
+            let (buf, pool) = buf.take();
+            self.scope_buf_slots.release_slot(tag, pool);
+            buf
+        } else {
+            None
         }
     }
 
@@ -234,29 +218,7 @@ impl<D> ScopeBuffer<D> {
         self.scope_buffers.iter_mut()
     }
 
-    fn create_new_buffer_slot(&mut self, tag: &Tag) -> BufferPtr<D> {
-        let slot = BufferPtr::new(BoundedBuffer::new(self.batch_size, self.batch_capacity));
-        let ptr = slot.clone();
-        self.scope_buffers.insert(tag.clone(), slot);
-        ptr
-    }
-}
-
-impl<D> Default for ScopeBuffer<D> {
-    fn default() -> Self {
-        ScopeBuffer {
-            batch_size: 1,
-            batch_capacity: 1,
-            max_concurrent_scopes: 0,
-            scope_buffers: Default::default(),
-        }
-    }
-}
-
-impl<D> Drop for ScopeBuffer<D> {
-    fn drop(&mut self) {
-        for (_, x) in self.scope_buffers.iter_mut() {
-            x.destroy();
-        }
+    pub fn destroy(&mut self) {
+        assert!(self.scope_buffers.is_empty());
     }
 }

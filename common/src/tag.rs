@@ -16,9 +16,8 @@
 //! Tags implementation.
 
 use std::hash::{Hash, Hasher};
-use std::io;
+use valley::codec::*;
 
-use crate::codec::*;
 /// Hierarchical tag which identify the data in stream;
 ///
 /// The hierarchy of tag is like a tree, each tag instance has a parent(except the ROOT),
@@ -351,63 +350,75 @@ impl From<Vec<u32>> for Tag {
     }
 }
 
+// impl Encode for Tag {
+//     fn write_to<W: WriteExt>(&self, writer: &mut W) -> io::Result<()> {
+//         match self {
+//             Tag::Null => writer.write_u8(0),
+//             Tag::One(v) => {
+//                 writer.write_u8(1)?;
+//                 writer.write_u32(*v)
+//             }
+//             Tag::Two(a, b) => {
+//                 writer.write_u8(2)?;
+//                 writer.write_u32(*a)?;
+//                 writer.write_u32(*b)
+//             }
+//             Tag::Three(a, b, c) => {
+//                 writer.write_u8(3)?;
+//                 writer.write_u32(*a)?;
+//                 writer.write_u32(*b)?;
+//                 writer.write_u32(*c)
+//             }
+//             Tag::Spilled(v) => {
+//                 assert!(v.len() < MAX_LENGTH);
+//                 let len = v.len() as u8;
+//                 writer.write_u8(len)?;
+//                 for t in &v[..] {
+//                     writer.write_u32(*t)?;
+//                 }
+//                 Ok(())
+//             }
+//         }
+//     }
+// }
+//
+// impl Decode for Tag {
+//     fn read_from<R: ReadExt>(reader: &mut R) -> io::Result<Tag> {
+//         let len = reader.read_u8()? as usize;
+//         if len == 0 {
+//             Ok(Tag::Null)
+//         } else if len == 1 {
+//             let cur = reader.read_u32()?;
+//             Ok(Tag::One(cur))
+//         } else if len == 2 {
+//             let a = reader.read_u32()?;
+//             let b = reader.read_u32()?;
+//             Ok(Tag::Two(a, b))
+//         } else if len == 3 {
+//             let a = reader.read_u32()?;
+//             let b = reader.read_u32()?;
+//             let c = reader.read_u32()?;
+//             Ok(Tag::Three(a, b, c))
+//         } else {
+//             let mut array = Vec::with_capacity(len);
+//             for _ in 0..len {
+//                 let t = reader.read_u32()?;
+//                 array.push(t);
+//             }
+//             Ok(Tag::Spilled(array))
+//         }
+//     }
+// }
+
 impl Encode for Tag {
-    fn write_to<W: WriteExt>(&self, writer: &mut W) -> io::Result<()> {
-        match self {
-            Tag::Null => writer.write_u8(0),
-            Tag::One(v) => {
-                writer.write_u8(1)?;
-                writer.write_u32(*v)
-            }
-            Tag::Two(a, b) => {
-                writer.write_u8(2)?;
-                writer.write_u32(*a)?;
-                writer.write_u32(*b)
-            }
-            Tag::Three(a, b, c) => {
-                writer.write_u8(3)?;
-                writer.write_u32(*a)?;
-                writer.write_u32(*b)?;
-                writer.write_u32(*c)
-            }
-            Tag::Spilled(v) => {
-                assert!(v.len() < MAX_LENGTH);
-                let len = v.len() as u8;
-                writer.write_u8(len)?;
-                for t in &v[..] {
-                    writer.write_u32(*t)?;
-                }
-                Ok(())
-            }
-        }
+    fn write_to<W: BufMut>(&self, _writer: &mut W) {
+        todo!()
     }
 }
 
 impl Decode for Tag {
-    fn read_from<R: ReadExt>(reader: &mut R) -> io::Result<Tag> {
-        let len = reader.read_u8()? as usize;
-        if len == 0 {
-            Ok(Tag::Null)
-        } else if len == 1 {
-            let cur = reader.read_u32()?;
-            Ok(Tag::One(cur))
-        } else if len == 2 {
-            let a = reader.read_u32()?;
-            let b = reader.read_u32()?;
-            Ok(Tag::Two(a, b))
-        } else if len == 3 {
-            let a = reader.read_u32()?;
-            let b = reader.read_u32()?;
-            let c = reader.read_u32()?;
-            Ok(Tag::Three(a, b, c))
-        } else {
-            let mut array = Vec::with_capacity(len);
-            for _ in 0..len {
-                let t = reader.read_u32()?;
-                array.push(t);
-            }
-            Ok(Tag::Spilled(array))
-        }
+    fn read_from<R: Buf>(_reader: &mut R) -> std::io::Result<Self> {
+        todo!()
     }
 }
 

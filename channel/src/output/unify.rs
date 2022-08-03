@@ -37,8 +37,8 @@ where
         Self::Pipeline(push)
     }
 
-    pub fn multi_scope_pipeline(worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>) -> Self {
-        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, push);
+    pub fn multi_scope_pipeline(worker_index: u16, scope_buf_slots: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>) -> Self {
+        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, scope_buf_slots, push);
         Self::MultiScopePipeline(push)
     }
 }

@@ -5,7 +5,7 @@ use pegasus_common::tag::Tag;
 use pegasus_server::{Decode, Encode, ServerInstance};
 
 use crate::base::{BasePull, SimpleDecoder};
-use crate::buffer::batch::BufferPool;
+use crate::buffer::pool::BufferPool;
 use crate::buffer::decoder::BatchDecoder;
 use crate::data::{Data, MiniScopeBatch};
 use crate::event::emitter::{BaseEventCollector, BaseEventEmitter};
@@ -40,13 +40,13 @@ where
 }
 
 pub fn alloc_multi_scope_buf_pipeline<T>(
-    worker_index: u16, ch_info: ChannelInfo,
+    worker_index: u16, max_scope_slots: u16, ch_info: ChannelInfo,
 ) -> (EnumStreamBufPush<T>, BasePull<MiniScopeBatch<T>>)
 where
     T: Data + Encode,
 {
     let (push, pull) = crate::base::alloc_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
-    let push = EnumStreamBufPush::multi_scope_pipeline(worker_index, ch_info, push);
+    let push = EnumStreamBufPush::multi_scope_pipeline(worker_index, max_scope_slots, ch_info, push);
     (push, pull)
 }
 

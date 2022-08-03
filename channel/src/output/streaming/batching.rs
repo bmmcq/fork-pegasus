@@ -1,7 +1,8 @@
+use std::sync::Arc;
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
-use crate::buffer::batch::{BufferPool, RoBatch, WoBatch};
+use crate::buffer::pool::{BufferPool, RoBatch, SharedScopedBufferPool, WoBatch};
 use crate::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
@@ -156,15 +157,27 @@ pub struct MultiScopeBufStreamPush<T, P> {
 }
 
 impl<T, P> MultiScopeBufStreamPush<T, P> {
-    pub fn new(ch_info: ChannelInfo, worker_index: u16, inner: P) -> Self {
+    pub fn new(ch_info: ChannelInfo, worker_index: u16, scope_buf_slots: u16, inner: P) -> Self {
         Self {
             ch_info,
             worker_index,
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
-            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity),
+            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity, scope_buf_slots),
             inner,
+        }
+    }
+
+    pub fn with_pool(ch_info: ChannelInfo, worker_index: u16, pool: Arc<SharedScopedBufferPool<T>>, inner : P) -> Self {
+        Self {
+            ch_info,
+            worker_index,
+            pinned: None,
+            batches: vec![],
+            send_stat: AHashMap::new(),
+            scope_buffers: ScopeBuffer::with_slot(pool),
+            inner
         }
     }
 }
@@ -286,16 +299,21 @@ where
     }
 
     fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
-        let last = if let Some(mut buffer) = self.get_or_create_buffer(&end.tag)? {
-            buffer.add_last(msg)
-        } else {
-            let mut last = WoBatch::new(1);
-            last.push(msg);
-            last.finalize()
-        };
+
+       if let Some((pin, buffer)) = self.pinned.take() {
+            if pin != end.tag {
+                self.pinned = Some((pin, buffer));
+            }
+        }
+
+        let mut buffer = self.scope_buffers.release(&end.tag)
+            .unwrap_or_else(|| WoBatch::new(1));
+        buffer.push(msg);
+        let last = buffer.finalize();
+
         // if this tag is not pin, `self.pinned` should be none after flush;
         // if this tag is pin, `self.pinned` should be take to none as it is last;
-        self.pinned.take();
+        // self.pinned.take();
 
         let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, last);
         let mut total_send = self.send_stat.remove(&end.tag).unwrap_or(0);
@@ -327,27 +345,21 @@ where
     }
 
     fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
-        let mut last = RoBatch::default();
-        if let Some((pin, mut buffer)) = self.pinned.take() {
-            if pin == end.tag {
-                if let Some(b) = buffer.exhaust() {
-                    last = b;
-                }
-            } else {
+
+        if let Some((pin, buffer)) = self.pinned.take() {
+            if pin != end.tag {
                 self.pinned = Some((pin, buffer));
             }
-        } else {
-            if let Some(mut buffer) = self.scope_buffers.fetch_buffer(&end.tag) {
-                if let Some(b) = buffer.exhaust() {
-                    last = b;
-                }
-            }
         }
+        let last = self.scope_buffers.release(&end.tag).map(|b| b.finalize())
+            .unwrap_or_else(RoBatch::default);
+
         let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, last);
         let mut total_send = self
             .send_stat
             .remove(&end.tag)
             .unwrap_or_default();
+
         total_send += batch.len();
         end.total_send = total_send as u64;
         batch.set_end(end);
@@ -366,6 +378,7 @@ where
     }
 
     fn close(&mut self) -> Result<(), PushError> {
+        self.scope_buffers.destroy();
         self.inner.close()
     }
 }
