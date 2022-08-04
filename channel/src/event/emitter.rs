@@ -5,7 +5,7 @@ use pegasus_common::rc::UnsafeRcPtr;
 
 use super::Event;
 use crate::base::{BasePull, BasePush};
-use crate::error::{PushError, PullError};
+use crate::error::{PullError, PushError};
 use crate::{Pull, Push};
 
 pub struct EventEmitter<P> {

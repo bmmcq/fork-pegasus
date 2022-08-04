@@ -1,4 +1,5 @@
 use pegasus_common::tag::Tag;
+
 use crate::data::Data;
 use crate::eos::Eos;
 use crate::error::PushError;
@@ -103,7 +104,9 @@ where
         self.pushes[target].push_last(msg, end)
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
+    fn push_iter<I: Iterator<Item = T>>(
+        &mut self, tag: &Tag, iter: &mut I,
+    ) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
 
         for p in self.pushes.iter_mut() {

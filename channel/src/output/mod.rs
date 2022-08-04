@@ -17,7 +17,7 @@ use pegasus_common::downcast::AsAny;
 
 use crate::eos::Eos;
 use crate::error::PushError;
-use crate::{Port};
+use crate::Port;
 
 #[derive(Copy, Clone)]
 pub struct OutputInfo {

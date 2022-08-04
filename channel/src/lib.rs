@@ -37,10 +37,7 @@ pub struct ChannelId {
 
 impl From<(u64, ChannelIndex)> for ChannelId {
     fn from(v: (u64, ChannelIndex)) -> Self {
-        ChannelId {
-            job_seq: v.0,
-            index: v.1
-        }
+        ChannelId { job_seq: v.0, index: v.1 }
     }
 }
 

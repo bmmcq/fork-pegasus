@@ -1,7 +1,7 @@
 use crate::data::{Data, MiniScopeBatch};
+use crate::error::PushError;
 use crate::event::emitter::EventEmitter;
 use crate::event::{Event, EventKind};
-use crate::error::PushError;
 use crate::{Port, Push};
 
 pub struct EventEosBatchPush<T, PD, PE> {

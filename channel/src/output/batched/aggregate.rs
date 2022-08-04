@@ -1,6 +1,6 @@
 use crate::data::{Data, MiniScopeBatch};
-use crate::output::Rectifier;
 use crate::error::PushError;
+use crate::output::Rectifier;
 use crate::{ChannelInfo, Push};
 
 pub struct AggregatePush<T, P> {

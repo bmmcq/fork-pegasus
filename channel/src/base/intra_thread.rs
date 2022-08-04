@@ -18,7 +18,7 @@ use std::collections::VecDeque;
 
 use pegasus_common::rc::UnsafeRcPtr;
 
-use crate::error::{PushError, PullError};
+use crate::error::{PullError, PushError};
 use crate::{ChannelId, Pull, Push};
 
 pub struct ThreadPush<T> {

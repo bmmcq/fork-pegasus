@@ -11,10 +11,10 @@ use pegasus_common::config::ServerId;
 pub use valley::codec::*;
 use valley::connection::quic::QUIConnBuilder;
 use valley::connection::tcp::TcpConnBuilder;
+pub use valley::errors::*;
 use valley::name_service::StaticNameService;
 use valley::server::ValleyServer;
 pub use valley::ChannelId;
-pub use valley::errors::*;
 
 use crate::consumer::Consumer;
 use crate::naming::NameServiceImpl;
@@ -139,9 +139,7 @@ impl ServerInstance {
     }
 }
 
-
-pub mod error;
 pub mod consumer;
-pub mod producer;
+pub mod error;
 pub mod naming;
-
+pub mod producer;

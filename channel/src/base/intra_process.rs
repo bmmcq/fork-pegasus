@@ -16,7 +16,7 @@
 use pegasus_common::channel::*;
 
 use crate::data::Data;
-use crate::error::{PushError, PullError};
+use crate::error::{PullError, PushError};
 use crate::{ChannelId, Pull, Push};
 
 pub struct IntraProcessPush<T> {

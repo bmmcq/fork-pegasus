@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bytes::BufMut;
 use pegasus_common::config::ServerId;
 use valley::codec::Encode;
-use valley::errors::{SendError};
+use valley::errors::SendError;
 use valley::send::unbound::VUnboundServerSender;
 
 pub struct Producer<T> {

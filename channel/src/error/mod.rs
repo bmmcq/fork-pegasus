@@ -13,49 +13,48 @@
 //! See the License for the specific language governing permissions and
 //! limitations under the License.
 
-use std::fmt::{Debug};
+use std::fmt::Debug;
 
 use pegasus_server::VError;
 use thiserror::Error;
-use crate::ChannelId;
-pub use self::push::PushError;
+
 pub use self::pull::PullError;
+pub use self::push::PushError;
+use crate::ChannelId;
 
 pub type IOResult<D> = Result<D, IOError>;
 
-mod push;
 mod pull;
-
+mod push;
 
 #[derive(Error, Debug)]
 pub enum IOErrorKind {
     #[error("push error {source};")]
     PushErr {
         #[from]
-        source: PushError
+        source: PushError,
     },
     #[error("pull error {source};")]
-    PullErr{
+    PullErr {
         #[from]
-        source: PullError
+        source: PullError,
     },
     #[error("ipc connect error {source};")]
     ConnectError {
         #[from]
-        source: VError
+        source: VError,
     },
     #[error("io error {source};")]
     SystemIO {
         #[from]
-        source: std::io::Error
+        source: std::io::Error,
     },
     #[error("unknown error {source:?}")]
     Unknown {
         #[from]
-        source: anyhow::Error
-    }
+        source: anyhow::Error,
+    },
 }
-
 
 #[derive(Error, Debug)]
 #[error("io error : {source} at channel {ch_id:?};")]
@@ -73,16 +72,13 @@ impl From<IOErrorKind> for IOError {
 
 impl From<VError> for IOError {
     fn from(source: VError) -> Self {
-        Self {
-            ch_id: None,
-            source: IOErrorKind::ConnectError { source }
-        }
+        Self { ch_id: None, source: IOErrorKind::ConnectError { source } }
     }
 }
 
 impl IOError {
     pub fn new<K: Into<IOErrorKind>>(kind: K) -> Self {
-        IOError { ch_id: None, source: kind.into(), }
+        IOError { ch_id: None, source: kind.into() }
     }
 
     pub fn set_ch_id(&mut self, ch_id: ChannelId) {

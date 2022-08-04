@@ -1,7 +1,8 @@
 use std::sync::Weak;
-use thiserror::Error;
+
 use pegasus_common::tag::Tag;
 use pegasus_server::SendError;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum PushError {
@@ -18,16 +19,16 @@ pub enum PushError {
     #[error("io error, caused by {source}")]
     SystemIO {
         #[from]
-        source: std::io::Error
+        source: std::io::Error,
     },
     #[error("push to remote server error: {source}")]
     IPCSendErr {
         #[from]
-        source: SendError
+        source: SendError,
     },
     #[error("unknown push error: {source:?}")]
     Unknown {
         #[from]
-        source: anyhow::Error
-    }
+        source: anyhow::Error,
+    },
 }

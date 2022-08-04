@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-
 #[derive(Error, Debug)]
 pub enum PullError {
     #[error("get eof of channel;")]
@@ -10,18 +9,18 @@ pub enum PullError {
     #[error("decode data fail, because {source};")]
     DecodeError {
         #[source]
-        source: std::io::Error
+        source: std::io::Error,
     },
     #[error("io error, caused by {source};")]
     SystemIO {
         #[from]
-        source: std::io::Error
+        source: std::io::Error,
     },
     #[error("unknown pull error: {source};")]
     Unknown {
         #[from]
-        source: anyhow::Error
-    }
+        source: anyhow::Error,
+    },
 }
 
 impl PullError {
@@ -29,7 +28,3 @@ impl PullError {
         matches!(self, PullError::Eof)
     }
 }
-
-
-
-

@@ -1,12 +1,12 @@
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use ahash::AHashMap;
 
+use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crossbeam_queue::{ArrayQueue, SegQueue};
-use tokio::sync::{Notify, RwLock};
 use pegasus_common::tag::Tag;
+use tokio::sync::{Notify, RwLock};
 
 pub struct WoBatch<T> {
     data: Box<[Option<T>]>,
@@ -250,7 +250,6 @@ impl<T> BufferPool<T> {
     }
 }
 
-
 impl<T> Clone for BufferPool<T> {
     fn clone(&self) -> Self {
         self.peers.fetch_add(1, Ordering::SeqCst);
@@ -267,60 +266,45 @@ impl<T> Clone for BufferPool<T> {
     }
 }
 
-
 pub enum ScopedBufferPool<T> {
     Local(LocalScopedBufferPool<T>),
-    Shared(Arc<SharedScopedBufferPool<T>>)
+    Shared(Arc<SharedScopedBufferPool<T>>),
 }
 
-impl <T> ScopedBufferPool<T> {
+impl<T> ScopedBufferPool<T> {
     pub fn release_slot(&mut self, tag: &Tag, pool: BufferPool<T>) {
         match self {
-            ScopedBufferPool::Local(p) => {
-                p.release_slot(tag)
-            }
-            ScopedBufferPool::Shared(p) => {
-                p.release_slot(tag, pool)
-            }
+            ScopedBufferPool::Local(p) => p.release_slot(tag),
+            ScopedBufferPool::Shared(p) => p.release_slot(tag, pool),
         }
     }
 
     pub fn alloc_slot(&mut self, tag: &Tag) -> Option<BufferPool<T>> {
         match self {
-            ScopedBufferPool::Local(p) => {
-                p.alloc_slot(tag)
-            }
-            ScopedBufferPool::Shared(p) => {
-                p.alloc_slot(tag)
-            }
+            ScopedBufferPool::Local(p) => p.alloc_slot(tag),
+            ScopedBufferPool::Shared(p) => p.alloc_slot(tag),
         }
     }
 }
 
-
-
 pub struct LocalScopedBufferPool<T> {
     idle_slots: VecDeque<BufferPool<T>>,
-    scope_bind: AHashMap<Tag, BufferPool<T>>
+    scope_bind: AHashMap<Tag, BufferPool<T>>,
 }
 
 pub struct SharedScopedBufferPool<T> {
-    idle_slot: ArrayQueue<BufferPool<T>>,
+    idle_slots: ArrayQueue<BufferPool<T>>,
     scope_bind: RwLock<AHashMap<Tag, BufferPool<T>>>,
-    waiting_notifies: ArrayQueue<Arc<Notify>>, 
+    waiting_notifies: SegQueue<Arc<Notify>>,
 }
 
-impl <T> LocalScopedBufferPool<T> {
-
+impl<T> LocalScopedBufferPool<T> {
     pub fn new(batch_size: u16, batch_capacity: u16, slot_capacity: u16) -> Self {
         let mut idle_slots = VecDeque::with_capacity(slot_capacity as usize);
         for _ in 0..slot_capacity {
             idle_slots.push_back(BufferPool::new(batch_size, batch_capacity));
         }
-        Self {
-            idle_slots, 
-            scope_bind: AHashMap::new()
-        }
+        Self { idle_slots, scope_bind: AHashMap::new() }
     }
 
     pub fn release_slot(&mut self, tag: &Tag) {
@@ -341,7 +325,16 @@ impl <T> LocalScopedBufferPool<T> {
     }
 }
 
-impl <T> SharedScopedBufferPool<T> {
+impl<T> SharedScopedBufferPool<T> {
+    pub fn new(batch_size: u16, batch_capacity: u16, slot_capacity: u16) -> Self {
+        let idle_slots = ArrayQueue::new(slot_capacity as usize);
+        for _ in 0..slot_capacity {
+            idle_slots
+                .push(BufferPool::new(batch_size, batch_capacity))
+                .ok();
+        }
+        Self { idle_slots, scope_bind: RwLock::new(AHashMap::new()), waiting_notifies: SegQueue::new() }
+    }
 
     pub async fn release_slot_async(&self, tag: &Tag, slot: BufferPool<T>) {
         let peers = slot.peers.fetch_sub(1, Ordering::SeqCst);
@@ -350,8 +343,11 @@ impl <T> SharedScopedBufferPool<T> {
             let mut wlock = self.scope_bind.write().await;
             if let Some(slot) = wlock.remove(tag) {
                 assert_eq!(slot.peers.load(Ordering::SeqCst), 1);
-                if let Err(_) = self.idle_slot.push(slot) {
+                if let Err(_) = self.idle_slots.push(slot) {
                     panic!("unexpected slot can't fit in queue;");
+                }
+                if let Some(waiting) = self.waiting_notifies.pop() {
+                    waiting.notify_one();
                 }
             } else {
                 unreachable!("unrecognized slot of {}", tag);
@@ -364,7 +360,6 @@ impl <T> SharedScopedBufferPool<T> {
     }
 
     pub async fn alloc_slot_async(&self, tag: &Tag, notify: Option<Arc<Notify>>) -> Option<BufferPool<T>> {
-
         let rlock = self.scope_bind.read().await;
         if let Some(slot) = rlock.get(tag) {
             return Some(slot.clone());
@@ -372,13 +367,13 @@ impl <T> SharedScopedBufferPool<T> {
 
         drop(rlock);
 
-        if let Some(slot) = self.idle_slot.pop() {
+        if let Some(slot) = self.idle_slots.pop() {
             let mut wlock = self.scope_bind.write().await;
             wlock.insert(tag.clone(), slot.clone());
             Some(slot)
-        } else { 
+        } else {
             if let Some(notify) = notify {
-               self.waiting_notifies.push(notify).ok(); 
+                self.waiting_notifies.push(notify);
             }
             None
         }
@@ -387,5 +382,4 @@ impl <T> SharedScopedBufferPool<T> {
     pub fn alloc_slot(&self, tag: &Tag) -> Option<BufferPool<T>> {
         futures::executor::block_on(self.alloc_slot_async(tag, None))
     }
-
 }

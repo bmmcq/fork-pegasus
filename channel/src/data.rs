@@ -7,9 +7,9 @@ use crate::buffer::pool::{RoBatch, WoBatch};
 use crate::eos::Eos;
 
 /// The constraint of data that can be delivered through the channel;
-pub trait Data: Encode + Send + 'static {}
+pub trait Data: Encode + Decode + Send + 'static {}
 
-impl<T: Encode + Send + 'static> Data for T {}
+impl<T: Encode + Decode + Send + 'static> Data for T {}
 
 pub struct Item<T> {
     pub tag: Tag,

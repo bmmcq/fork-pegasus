@@ -9,7 +9,7 @@ use crate::block::BlockGuard;
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
 use crate::input::InputInfo;
-use crate::{PullError, Pull};
+use crate::{Pull, PullError};
 
 pub enum PopEntry<T> {
     EOF,

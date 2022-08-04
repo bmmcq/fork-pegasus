@@ -1,4 +1,3 @@
-
 use async_trait::async_trait;
 use pegasus_common::bytes::Bytes;
 use pegasus_common::config::ServerId;
@@ -9,7 +8,7 @@ use pegasus_server::{Decode, Encode};
 use crate::base::intra_process::IntraProcessPush;
 use crate::data::Data;
 use crate::error::PushError;
-use crate::{Push};
+use crate::Push;
 
 #[async_trait]
 pub trait Decoder {

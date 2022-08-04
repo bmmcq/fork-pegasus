@@ -4,10 +4,11 @@ use std::sync::Arc;
 
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
+
 use crate::buffer::pool::{LocalScopedBufferPool, ScopedBufferPool, SharedScopedBufferPool};
 
-pub mod pool;
 pub mod decoder;
+pub mod pool;
 use self::pool::{BufferPool, RoBatch, WoBatch};
 
 pub struct WouldBlock;
@@ -166,25 +167,25 @@ impl<D> DerefMut for BufferPtr<D> {
 
 pub struct ScopeBuffer<D> {
     scope_buffers: AHashMap<Tag, BufferPtr<D>>,
-    scope_buf_slots: ScopedBufferPool<D>
+    scope_buf_slots: ScopedBufferPool<D>,
 }
 
 unsafe impl<D: Send> Send for ScopeBuffer<D> {}
 
 impl<D> ScopeBuffer<D> {
-
     pub fn new(batch_size: u16, batch_capacity: u16, scope_slots: u16) -> Self {
         Self {
             scope_buffers: AHashMap::new(),
-            scope_buf_slots: ScopedBufferPool::Local(LocalScopedBufferPool::new(batch_size, batch_capacity, scope_slots))
+            scope_buf_slots: ScopedBufferPool::Local(LocalScopedBufferPool::new(
+                batch_size,
+                batch_capacity,
+                scope_slots,
+            )),
         }
     }
 
     pub fn with_slot(slots: Arc<SharedScopedBufferPool<D>>) -> Self {
-        Self {
-            scope_buffers: AHashMap::new(),
-            scope_buf_slots: ScopedBufferPool::Shared(slots)
-        }
+        Self { scope_buffers: AHashMap::new(), scope_buf_slots: ScopedBufferPool::Shared(slots) }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {
@@ -199,7 +200,8 @@ impl<D> ScopeBuffer<D> {
         if let Some(slot) = self.scope_buffers.get(tag) {
             Some(slot.clone())
         } else {
-           self.scope_buf_slots.alloc_slot(tag)
+            self.scope_buf_slots
+                .alloc_slot(tag)
                 .map(|slot| BufferPtr::new(BoundedBuffer::with_pool(slot)))
         }
     }

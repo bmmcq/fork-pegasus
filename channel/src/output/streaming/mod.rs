@@ -17,7 +17,8 @@ pub trait StreamPush<T: Data> {
 
     fn push_last(&mut self, msg: T, end: Eos) -> Result<(), PushError>;
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError>;
+    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I)
+        -> Result<Pushed<T>, PushError>;
 
     fn notify_end(&mut self, end: Eos) -> Result<(), PushError>;
 

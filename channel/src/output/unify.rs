@@ -15,17 +15,18 @@ use crate::ChannelInfo;
 
 pub type BaseBatchPush<T> = BasePush<MiniScopeBatch<T>>;
 pub type BaseBatchPull<T> = BasePull<MiniScopeBatch<T>>;
-pub type EventedBaseBathPush<T> = EventEosBatchPush<T, BaseBatchPush<T>, BasePush<Event>>;
-pub type BufEventedBaseBatchPush<T> = BufStreamPush<T, EventedBaseBathPush<T>>;
+pub type EeBaseBatchPush<T> = EventEosBatchPush<T, BaseBatchPush<T>, BasePush<Event>>;
+pub type BuEeBaseBatchPush<T> = BufStreamPush<T, EeBaseBatchPush<T>>;
+pub type MsBuEeBaseBatchPush<T> = MultiScopeBufStreamPush<T, EeBaseBatchPush<T>>;
 
 pub enum EnumStreamBufPush<T: Data + Encode> {
     Pipeline(BufStreamPush<T, BaseBatchPush<T>>),
     MultiScopePipeline(MultiScopeBufStreamPush<T, BaseBatchPush<T>>),
-    Exchange(PartitionStreamPush<T, BufStreamPush<T, EventedBaseBathPush<T>>>),
-    MultiScopeExchange(PartitionStreamPush<T, MultiScopeBufStreamPush<T, EventedBaseBathPush<T>>>),
-    Aggregate(BufStreamPush<T, AggregatePush<T, EventedBaseBathPush<T>>>),
-    MultiScopeAggregate(MultiScopeBufStreamPush<T, AggregatePush<T, EventedBaseBathPush<T>>>),
-    AggregateByScope(MultiScopeBufStreamPush<T, AggregateByScopePush<T, EventedBaseBathPush<T>>>),
+    Exchange(PartitionStreamPush<T, BufStreamPush<T, EeBaseBatchPush<T>>>),
+    MultiScopeExchange(PartitionStreamPush<T, MultiScopeBufStreamPush<T, EeBaseBatchPush<T>>>),
+    Aggregate(BufStreamPush<T, AggregatePush<T, EeBaseBatchPush<T>>>),
+    MultiScopeAggregate(MultiScopeBufStreamPush<T, AggregatePush<T, EeBaseBatchPush<T>>>),
+    AggregateByScope(MultiScopeBufStreamPush<T, AggregateByScopePush<T, EeBaseBatchPush<T>>>),
 }
 
 impl<T> EnumStreamBufPush<T>
@@ -37,7 +38,9 @@ where
         Self::Pipeline(push)
     }
 
-    pub fn multi_scope_pipeline(worker_index: u16, scope_buf_slots: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>) -> Self {
+    pub fn multi_scope_pipeline(
+        worker_index: u16, scope_buf_slots: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
+    ) -> Self {
         let push = MultiScopeBufStreamPush::new(ch_info, worker_index, scope_buf_slots, push);
         Self::MultiScopePipeline(push)
     }
@@ -94,7 +97,9 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         }
     }
 
-    fn push_iter<I: Iterator<Item = T>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<T>, PushError> {
+    fn push_iter<I: Iterator<Item = T>>(
+        &mut self, tag: &Tag, iter: &mut I,
+    ) -> Result<Pushed<T>, PushError> {
         match self {
             EnumStreamBufPush::Pipeline(p) => p.push_iter(tag, iter),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push_iter(tag, iter),

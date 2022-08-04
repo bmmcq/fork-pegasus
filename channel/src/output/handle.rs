@@ -33,7 +33,7 @@ pub struct OutputHandle<D, T> {
     info: OutputInfo,
     tag: Tag,
     scope_delta: MergedScopeDelta,
-    blocked: Option<BlockEntry<D>>,
+    send_buffer: Option<BlockEntry<D>>,
     output: T,
 }
 
@@ -52,7 +52,7 @@ where
             is_closed: false,
             is_aborted: false,
             scope_delta: delta,
-            blocked: None,
+            send_buffer: None,
             output,
         }
     }
@@ -68,7 +68,7 @@ where
 
     pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(self.tag, end.tag);
-        assert!(self.blocked.is_none());
+        assert!(self.send_buffer.is_none());
         let tag = self.scope_delta.evolve(&end.tag);
         end.tag = tag;
         self.output.notify_end(end)
@@ -98,18 +98,18 @@ where
     T: StreamPush<D>,
 {
     fn has_blocks(&self) -> bool {
-        self.blocked.is_some()
+        self.send_buffer.is_some()
     }
 
     fn try_unblock(&mut self) -> Result<(), PushError> {
-        if let Some(mut block) = self.blocked.take() {
+        if let Some(mut block) = self.send_buffer.take() {
             let kind = block.take_block();
             match kind {
                 BlockKind::None => (),
                 BlockKind::One(msg) => match self.output.push(block.get_tag(), msg)? {
                     Pushed::WouldBlock(Some(msg)) => {
                         block.re_block(msg);
-                        self.blocked = Some(block);
+                        self.send_buffer = Some(block);
                     }
                     _ => (),
                 },
@@ -118,7 +118,7 @@ where
                         match self.output.push(block.get_tag(), msg)? {
                             Pushed::WouldBlock(Some(msg)) => {
                                 block.re_block_iter(Some(msg), iter);
-                                self.blocked = Some(block);
+                                self.send_buffer = Some(block);
                                 return Ok(());
                             }
                             _ => (),
@@ -131,12 +131,12 @@ where
                         Pushed::Finished => {}
                         Pushed::WouldBlock(Some(msg)) => {
                             block.re_block_iter(Some(msg), iter);
-                            self.blocked = Some(block);
+                            self.send_buffer = Some(block);
                         }
                         Pushed::WouldBlock(None) => {
                             if let Some(next) = iter.next() {
                                 block.re_block_iter(Some(next), iter);
-                                self.blocked = Some(block);
+                                self.send_buffer = Some(block);
                             }
                         }
                     }
@@ -154,7 +154,7 @@ where
 {
     fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
         let abort = self.output.abort(tag, worker)?;
-        if let Some(block) = self.blocked.take() {
+        if let Some(block) = self.send_buffer.take() {
             assert_eq!(block.get_tag(), &abort);
         }
 
@@ -180,13 +180,13 @@ where
     }
 
     pub fn give(&mut self, msg: D) -> Result<(), PushError> {
-        assert!(self.output.blocked.is_none());
+        assert!(self.output.send_buffer.is_none());
         match self.output.output.push(&self.tag, msg)? {
             Pushed::Finished => Ok(()),
             Pushed::WouldBlock(Some(msg)) => {
                 let entry = BlockEntry::one(self.tag.clone(), msg);
                 let hook = entry.get_hook();
-                self.output.blocked = Some(entry);
+                self.output.send_buffer = Some(entry);
                 Err(PushError::WouldBlock(Some(hook.take())))?
             }
             Pushed::WouldBlock(None) => Err(PushError::WouldBlock(None))?,
@@ -194,7 +194,7 @@ where
     }
 
     pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
-        assert!(self.output.blocked.is_none());
+        assert!(self.output.send_buffer.is_none());
         self.output.output.push_last(msg, end)
     }
 
@@ -202,7 +202,7 @@ where
     where
         I: Iterator<Item = D> + Send + 'static,
     {
-        assert!(self.output.blocked.is_none());
+        assert!(self.output.send_buffer.is_none());
         match self
             .output
             .output
@@ -212,7 +212,7 @@ where
             Pushed::WouldBlock(head) => {
                 let entry = BlockEntry::iter(self.tag.clone(), head, iter);
                 let hook = entry.get_hook();
-                self.output.blocked = Some(entry);
+                self.output.send_buffer = Some(entry);
                 Err(PushError::WouldBlock(Some(hook.take())))?
             }
         }
@@ -233,7 +233,7 @@ pub struct MultiScopeOutputHandle<D, T> {
     is_closed: bool,
     info: OutputInfo,
     scope_delta: MergedScopeDelta,
-    blocks: AHashMap<Tag, BlockEntry<D>>,
+    send_buffer: AHashMap<Tag, BlockEntry<D>>,
     aborts: AHashSet<Tag>,
     output: T,
 }
@@ -249,7 +249,7 @@ where
             worker_index,
             is_closed: false,
             scope_delta: delta,
-            blocks: AHashMap::new(),
+            send_buffer: AHashMap::new(),
             aborts: AHashSet::new(),
             output,
         }
@@ -257,7 +257,7 @@ where
 
     pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         let tag = self.scope_delta.evolve(&end.tag);
-        assert!(!self.blocks.contains_key(&tag));
+        assert!(!self.send_buffer.contains_key(&tag));
         self.aborts.remove(&tag);
         end.tag = tag;
         self.output.notify_end(end)
@@ -301,11 +301,11 @@ where
     T: StreamPush<D> + Pinnable,
 {
     fn has_blocks(&self) -> bool {
-        self.blocks.is_empty()
+        self.send_buffer.is_empty()
     }
 
     fn try_unblock(&mut self) -> Result<(), PushError> {
-        for block in self.blocks.values_mut() {
+        for block in self.send_buffer.values_mut() {
             let kind = block.take_block();
             match kind {
                 BlockKind::None => {}
@@ -357,7 +357,7 @@ where
                 }
             }
         }
-        self.blocks
+        self.send_buffer
             .retain(|_tag, block| block.has_block());
         Ok(())
     }
@@ -370,7 +370,7 @@ where
 {
     fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
         let tag = self.output.abort(tag, worker)?;
-        if let Some(_block) = self.blocks.remove(&tag) {
+        if let Some(_block) = self.send_buffer.remove(&tag) {
             //
         }
         let abort_tag = self.scope_delta.evolve_back(&tag);
@@ -404,7 +404,7 @@ where
 {
     fn new(tag: Tag, output: &'a mut MultiScopeOutputHandle<D, T>) -> Result<Self, PushError> {
         let push_tag = output.scope_delta.evolve(&tag);
-        assert!(!output.blocks.contains_key(&push_tag));
+        assert!(!output.send_buffer.contains_key(&push_tag));
         if !output.output.pin(&push_tag)? {
             Err(PushError::WouldBlock(None))?;
         }
@@ -419,7 +419,7 @@ where
                 let block = BlockEntry::one(self.tag.clone(), msg);
                 let hook = block.get_hook();
                 self.output
-                    .blocks
+                    .send_buffer
                     .insert(self.tag.clone(), block);
                 self.is_blocked = true;
                 Err(PushError::WouldBlock(Some(hook.take())))?
@@ -451,7 +451,7 @@ where
                 let entry = BlockEntry::iter(self.tag.clone(), head, iter);
                 let hook = entry.get_hook();
                 self.output
-                    .blocks
+                    .send_buffer
                     .insert(self.tag.clone(), entry);
                 Err(PushError::WouldBlock(Some(hook.take())))?
             }
