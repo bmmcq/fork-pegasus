@@ -798,8 +798,10 @@ dependencies = [
 name = "pegasus_dataflow"
 version = "1.0.0"
 dependencies = [
+ "anyhow",
  "pegasus_channel",
  "pegasus_common",
+ "thiserror",
 ]
 
 [[package]]

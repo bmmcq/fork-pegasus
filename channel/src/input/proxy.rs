@@ -8,8 +8,7 @@ use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
 use crate::error::PullError;
 use crate::input::handle::{InputHandle, MultiScopeInputHandle};
-use crate::input::{Input, InputInfo};
-use crate::output::AnyOutput;
+use crate::input::{AnyInput, Input, InputInfo};
 
 pub struct InputProxy<T: Data>(RefCell<InputHandle<T, BasePull<MiniScopeBatch<T>>>>);
 pub struct MultiScopeInputProxy<T: Data>(RefCell<MultiScopeInputHandle<T, BasePull<MiniScopeBatch<T>>>>);
@@ -23,7 +22,7 @@ where
     }
 
     pub fn downcast(
-        input: &Box<dyn AnyOutput>,
+        input: &Box<dyn AnyInput>,
     ) -> Option<RefMut<InputHandle<T, BasePull<MiniScopeBatch<T>>>>> {
         input
             .as_any_ref()
@@ -62,7 +61,7 @@ where
     }
 
     pub fn downcast(
-        input: &Box<dyn AnyOutput>,
+        input: &Box<dyn AnyInput>,
     ) -> Option<RefMut<MultiScopeInputHandle<T, BasePull<MiniScopeBatch<T>>>>> {
         input
             .as_any_ref()
