@@ -7,9 +7,9 @@ use pegasus_channel::output::unify::EnumStreamBufPush;
 use crate::error::JobExecError;
 
 pub type BatchInput<T> = InputHandle<T, BasePull<MiniScopeBatch<T>>>;
-pub type BatchOutput<T> = OutputHandle<T, EnumStreamBufPush<T>>;
+pub type Output<T> = OutputHandle<T, EnumStreamBufPush<T>>;
 pub type MultiScopeBatchInput<T> = MultiScopeInputHandle<T, BasePull<MiniScopeBatch<T>>>;
-pub type MultiScopeBatchOutput<T> = MultiScopeOutputHandle<T, EnumStreamBufPush<T>>;
+pub type MultiScopeOutput<T> = MultiScopeOutputHandle<T, EnumStreamBufPush<T>>;
 
 #[derive(Clone)]
 pub struct OperatorInfo {
@@ -39,3 +39,4 @@ pub trait Operator {
 pub mod unary;
 pub mod binary;
 pub mod branch;
+pub mod consume;

@@ -80,6 +80,9 @@ impl<D> BlockEntry<D> {
 }
 
 pub trait BlockHandle<T> {
+    
+    fn block_on(&mut self, guard: BlockEntry<T>);
+    
     fn has_blocks(&self) -> bool;
 
     fn try_unblock(&mut self) -> Result<(), PushError>;

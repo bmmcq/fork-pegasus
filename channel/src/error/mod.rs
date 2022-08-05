@@ -84,4 +84,8 @@ impl IOError {
     pub fn set_ch_id(&mut self, ch_id: ChannelId) {
         self.ch_id = Some(ch_id)
     }
+
+    pub fn cause(&mut self) -> &mut IOErrorKind {
+        &mut self.source
+    }
 }

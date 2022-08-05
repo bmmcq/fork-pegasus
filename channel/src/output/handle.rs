@@ -25,6 +25,67 @@ use crate::output::delta::MergedScopeDelta;
 use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::output::OutputInfo;
 
+pub struct MiniScopeStreamSink<'a, D, T> {
+    is_blocked: bool,
+    pub tag: Tag,
+    sink: &'a mut T,
+    _ph: std::marker::PhantomData<D>
+}
+
+impl <'a, D, T> MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + BlockHandle<D> {
+
+    fn new(tag: Tag, sink: &'a mut T) -> Self {
+        Self { is_blocked: false, tag, sink, _ph: std::marker::PhantomData }
+    }
+
+    pub fn give(&mut self, msg: D) -> Result<(), PushError> {
+        assert!(!self.is_blocked, "can't send message after block;");
+        match self.sink.push(&self.tag, msg)? {
+            Pushed::Finished => Ok(()),
+            Pushed::WouldBlock(Some(msg)) => {
+                let block = BlockEntry::one(self.tag.clone(), msg);
+                let hook = block.get_hook();
+                self.sink.block_on(block);
+                self.is_blocked = true;
+                Err(PushError::WouldBlock(Some(hook.take())))?
+            }
+            Pushed::WouldBlock(None) => {
+                self.is_blocked = true;
+                Err(PushError::WouldBlock(None))?
+            }
+        }
+    }
+
+    pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
+        assert!(!self.is_blocked, "can't send message after block;");
+        self.sink.push_last(msg, end)
+    }
+
+    pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
+        where
+            I: Iterator<Item = D> + Send + 'static,
+    {
+        assert!(!self.is_blocked, "can't send message after block;");
+        match self.sink.push_iter(&self.tag, &mut iter)? {
+            Pushed::Finished => Ok(()),
+            Pushed::WouldBlock(head) => {
+                let entry = BlockEntry::iter(self.tag.clone(), head, iter);
+                let hook = entry.get_hook();
+                self.sink.block_on(entry);
+                Err(PushError::WouldBlock(Some(hook.take())))?
+            }
+        }
+    }
+
+    pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
+        self.sink.notify_end(end)
+    }
+
+    pub fn flush(&mut self) -> Result<(), PushError> {
+        self.sink.flush()
+    }
+}
+
 pub struct OutputHandle<D, T> {
     #[allow(dead_code)]
     worker_index: u16,
@@ -57,12 +118,12 @@ where
         }
     }
 
-    pub fn new_session(&mut self, tag: Tag) -> Result<OutputSession<D, T>, PushError> {
+    pub fn new_session(&mut self, tag: Tag) -> Result<MiniScopeStreamSink<D, Self>, PushError> {
         assert!(tag.is_root());
         if self.is_aborted {
             Err(PushError::Aborted(tag))
         } else {
-            OutputSession::new(self.tag.clone(), self)
+            Ok(MiniScopeStreamSink::new(self.tag.clone(), self))
         }
     }
 
@@ -97,6 +158,10 @@ where
     D: Data,
     T: StreamPush<D>,
 {
+    fn block_on(&mut self, guard: BlockEntry<D>) {
+        self.send_buffer = Some(guard);
+    }
+
     fn has_blocks(&self) -> bool {
         self.send_buffer.is_some()
     }
@@ -165,65 +230,29 @@ where
     }
 }
 
-pub struct OutputSession<'a, D, T> {
-    pub tag: Tag,
-    output: &'a mut OutputHandle<D, T>,
-}
-
-impl<'a, D, T> OutputSession<'a, D, T>
-where
-    D: Data,
-    T: StreamPush<D>,
-{
-    fn new(tag: Tag, output: &'a mut OutputHandle<D, T>) -> Result<Self, PushError> {
-        Ok(Self { tag, output })
+impl <D, T> StreamPush<D> for OutputHandle<D, T> where D: Data, T: StreamPush<D> {
+    fn push(&mut self, tag: &Tag, msg: D) -> Result<Pushed<D>, PushError> {
+        self.output.push(tag, msg)
     }
 
-    pub fn give(&mut self, msg: D) -> Result<(), PushError> {
-        assert!(self.output.send_buffer.is_none());
-        match self.output.output.push(&self.tag, msg)? {
-            Pushed::Finished => Ok(()),
-            Pushed::WouldBlock(Some(msg)) => {
-                let entry = BlockEntry::one(self.tag.clone(), msg);
-                let hook = entry.get_hook();
-                self.output.send_buffer = Some(entry);
-                Err(PushError::WouldBlock(Some(hook.take())))?
-            }
-            Pushed::WouldBlock(None) => Err(PushError::WouldBlock(None))?,
-        }
+    fn push_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
+        self.output.push_last(msg, end)
     }
 
-    pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
-        assert!(self.output.send_buffer.is_none());
-        self.output.output.push_last(msg, end)
+    fn push_iter<I: Iterator<Item=D>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<D>, PushError> {
+        self.output.push_iter(tag, iter)
     }
 
-    pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
-    where
-        I: Iterator<Item = D> + Send + 'static,
-    {
-        assert!(self.output.send_buffer.is_none());
-        match self
-            .output
-            .output
-            .push_iter(&self.tag, &mut iter)?
-        {
-            Pushed::Finished => Ok(()),
-            Pushed::WouldBlock(head) => {
-                let entry = BlockEntry::iter(self.tag.clone(), head, iter);
-                let hook = entry.get_hook();
-                self.output.send_buffer = Some(entry);
-                Err(PushError::WouldBlock(Some(hook.take())))?
-            }
-        }
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
+        self.notify_end(end)
     }
 
-    pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
-        self.output.notify_end(end)
+    fn flush(&mut self) -> Result<(), PushError> {
+        self.flush()
     }
 
-    pub fn flush(&mut self) -> Result<(), PushError> {
-        self.output.flush()
+    fn close(&mut self) -> Result<(), PushError> {
+       self.close()
     }
 }
 
@@ -281,16 +310,48 @@ where
     }
 }
 
+impl <D, T> StreamPush<D> for MultiScopeOutputHandle<D, T> where D: Data, T: StreamPush<D> {
+    fn push(&mut self, tag: &Tag, msg: D) -> Result<Pushed<D>, PushError> {
+        self.output.push(tag, msg)
+    }
+
+    fn push_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
+        self.output.push_last(msg, end)
+    }
+
+    fn push_iter<I: Iterator<Item=D>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<D>, PushError> {
+        self.output.push_iter(tag, iter)
+    }
+
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
+        self.notify_end(end)
+    }
+
+    fn flush(&mut self) -> Result<(), PushError> {
+        self.flush()
+    }
+
+    fn close(&mut self) -> Result<(), PushError> {
+        self.close()
+    }
+}
+
 impl<D, T> MultiScopeOutputHandle<D, T>
 where
     D: Data,
-    T: StreamPush<D> + Pinnable + Send + 'static,
+    T: StreamPush<D> + Pinnable + 'static,
 {
-    pub fn new_session(&mut self, tag: Tag) -> Result<MultiScopeOutputSession<D, T>, PushError> {
+    pub fn new_session(&mut self, tag: Tag) -> Result<MiniScopeStreamSink<D, Self>, PushError> {
         if self.aborts.contains(&tag) {
             Err(PushError::Aborted(tag))?
         } else {
-            MultiScopeOutputSession::new(tag, self)
+            let push_tag = self.scope_delta.evolve(&tag);
+            assert!(!self.send_buffer.contains_key(&push_tag));
+            if !self.output.pin(&push_tag)? {
+                Err(PushError::WouldBlock(None))?;
+            }
+
+            Ok(MiniScopeStreamSink::new(tag, self))
         }
     }
 }
@@ -300,6 +361,10 @@ where
     D: Data,
     T: StreamPush<D> + Pinnable,
 {
+    fn block_on(&mut self, guard: BlockEntry<D>) {
+        self.send_buffer.insert(guard.get_tag().clone(), guard);
+    }
+
     fn has_blocks(&self) -> bool {
         self.send_buffer.is_empty()
     }
@@ -376,93 +441,5 @@ where
         let abort_tag = self.scope_delta.evolve_back(&tag);
         self.aborts.insert(abort_tag.clone());
         Some(abort_tag)
-    }
-}
-
-pub struct MultiScopeOutputSession<'a, D: Data, T: StreamPush<D> + Pinnable + Send + 'static> {
-    pub tag: Tag,
-    is_blocked: bool,
-    output: &'a mut MultiScopeOutputHandle<D, T>,
-}
-
-impl<'a, D, T> Drop for MultiScopeOutputSession<'a, D, T>
-where
-    D: Data,
-    T: StreamPush<D> + Pinnable + Send + 'static,
-{
-    fn drop(&mut self) {
-        if let Err(e) = self.output.output.unpin() {
-            error!("failed to do unpin: {}", e);
-        }
-    }
-}
-
-impl<'a, D, T> MultiScopeOutputSession<'a, D, T>
-where
-    D: Data,
-    T: StreamPush<D> + Pinnable + Send + 'static,
-{
-    fn new(tag: Tag, output: &'a mut MultiScopeOutputHandle<D, T>) -> Result<Self, PushError> {
-        let push_tag = output.scope_delta.evolve(&tag);
-        assert!(!output.send_buffer.contains_key(&push_tag));
-        if !output.output.pin(&push_tag)? {
-            Err(PushError::WouldBlock(None))?;
-        }
-        Ok(Self { tag: push_tag, is_blocked: false, output })
-    }
-
-    pub fn give(&mut self, msg: D) -> Result<(), PushError> {
-        assert!(!self.is_blocked, "can't send message after block;");
-        match self.output.output.push(&self.tag, msg)? {
-            Pushed::Finished => Ok(()),
-            Pushed::WouldBlock(Some(msg)) => {
-                let block = BlockEntry::one(self.tag.clone(), msg);
-                let hook = block.get_hook();
-                self.output
-                    .send_buffer
-                    .insert(self.tag.clone(), block);
-                self.is_blocked = true;
-                Err(PushError::WouldBlock(Some(hook.take())))?
-            }
-            Pushed::WouldBlock(None) => {
-                self.is_blocked = true;
-                Err(PushError::WouldBlock(None))?
-            }
-        }
-    }
-
-    pub fn give_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
-        assert!(!self.is_blocked, "can't send message after block;");
-        self.output.output.push_last(msg, end)
-    }
-
-    pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
-    where
-        I: Iterator<Item = D> + Send + 'static,
-    {
-        assert!(!self.is_blocked, "can't send message after block;");
-        match self
-            .output
-            .output
-            .push_iter(&self.tag, &mut iter)?
-        {
-            Pushed::Finished => Ok(()),
-            Pushed::WouldBlock(head) => {
-                let entry = BlockEntry::iter(self.tag.clone(), head, iter);
-                let hook = entry.get_hook();
-                self.output
-                    .send_buffer
-                    .insert(self.tag.clone(), entry);
-                Err(PushError::WouldBlock(Some(hook.take())))?
-            }
-        }
-    }
-
-    pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
-        self.output.notify_end(end)
-    }
-
-    pub fn flush(&mut self) -> Result<(), PushError> {
-        self.output.flush()
     }
 }
