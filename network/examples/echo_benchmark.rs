@@ -133,7 +133,7 @@ fn main() {
                     }
                 }
                 Ok(None) => continue,
-                Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
+                Err(e) if e.is_recv_eof() => {
                     break;
                 }
                 Err(e) => panic!("get error {:?}", e),

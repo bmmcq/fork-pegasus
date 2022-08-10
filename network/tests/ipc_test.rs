@@ -116,11 +116,11 @@ fn mock_process_0(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                         receives.extend_from_slice(&entry.data);
                     }
                     Err(e) => {
-                        if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        if e.is_recv_eof() {
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected error {:?}", e);
                         }
                     }
                     _ => (),
@@ -162,11 +162,11 @@ fn mock_process_1(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                         receives.extend_from_slice(&entry.data);
                     }
                     Err(e) => {
-                        if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        if e.is_recv_eof() {
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected error {:?}", e);
                         }
                     }
                     _ => (),
@@ -207,11 +207,11 @@ fn mock_process_2(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                         receives.extend_from_slice(&entry.data);
                     }
                     Err(e) => {
-                        if e.kind() == std::io::ErrorKind::BrokenPipe {
+                        if e.is_recv_eof() {
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected error {:?}", e);
                         }
                     }
                     _ => (),

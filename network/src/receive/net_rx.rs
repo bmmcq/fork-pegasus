@@ -284,8 +284,8 @@ impl InboxRegister {
 mod test {
     use std::io::Read;
     use std::time::Duration;
+    use pegasus_common::channel::RecvError;
 
-    use pegasus_common::channel::MPMCReceiver;
     use pegasus_common::codec::{AsBytes, Encode};
     use pegasus_common::io::WriteExt;
 
@@ -309,7 +309,7 @@ mod test {
             assert_eq!(rx.recv().unwrap().as_ref(), vec![3u8; 128].as_slice());
             inbox.close();
             if let Err(e) = rx.recv() {
-                assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
+                assert_eq!(e, RecvError::Eof);
             } else {
                 panic!("expect broken pipe error;");
             }
@@ -332,7 +332,7 @@ mod test {
             assert!(empty.is_none());
             inbox.close();
             if let Err(e) = rx.recv() {
-                assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
+                assert_eq!(e, RecvError::Eof);
             } else {
                 panic!("expect broken pipe error;");
             }
@@ -350,7 +350,7 @@ mod test {
             assert_eq!(rx.recv().unwrap().as_ref(), vec![2u8; 128].as_slice());
             assert_eq!(rx.recv().unwrap().as_ref(), vec![3u8; 128].as_slice());
             if let Err(e) = rx.recv() {
-                assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
+                assert!(e.is_eof())
             } else {
                 panic!("expect broken pipe error;");
             }
@@ -392,10 +392,13 @@ mod test {
         //let decoder = SimpleBlockDecoder::new();
         let mut net_rx = NetReceiver::new(5, "127.0.0.1:8080".parse().unwrap(), reader, decoder);
         let register = net_rx.get_inbox_register();
-        let mut user_rx = vec![None; 9];
+        let mut user_rx = Vec::new();
+        for _ in 0..9 {
+            user_rx.push(None);
+        }
 
         for i in 5..9 {
-            let (tx, rx) = pegasus_common::channel::unbound();
+            let (mut tx, rx) = pegasus_common::channel::unbound();
             register.register(i as u128, &tx).unwrap();
             tx.close();
             user_rx[i as usize] = Some(rx);
@@ -406,7 +409,7 @@ mod test {
         }
 
         for i in 1..5 {
-            let (tx, rx) = pegasus_common::channel::unbound();
+            let (mut tx, rx) = pegasus_common::channel::unbound();
             register.register(i as u128, &tx).unwrap();
             tx.close();
             user_rx[i as usize] = Some(rx);
@@ -419,7 +422,7 @@ mod test {
                 let data = rx.recv().unwrap();
                 assert_eq!(data.as_ref(), vec![i as u8; 256].as_slice());
                 if let Err(e) = rx.recv() {
-                    assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
+                    assert!(e.is_eof());
                 } else {
                     panic!("expect broken pipe error;");
                 }
