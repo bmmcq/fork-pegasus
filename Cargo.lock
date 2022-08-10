@@ -799,8 +799,10 @@ name = "pegasus_dataflow"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "log",
  "pegasus_channel",
  "pegasus_common",
+ "smallvec",
  "thiserror",
 ]
 

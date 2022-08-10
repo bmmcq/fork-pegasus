@@ -10,7 +10,7 @@ pub struct InputInfo {
     port: Port,
 }
 
-pub trait Input: Send {
+pub trait Input: Send + 'static {
     fn info(&self) -> InputInfo;
 
     fn check_ready(&self) -> Result<bool, PullError>;

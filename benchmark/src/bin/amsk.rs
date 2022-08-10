@@ -10,7 +10,7 @@ use structopt::StructOpt;
 #[derive(Debug, StructOpt)]
 #[structopt(
     name = "async multi-src k-hop ",
-    about = "Search k-hop neighbors using parallel dataflow system"
+    about = "Search k-hop neighbors using parallel plan system"
 )]
 struct Config {
     /// The number of hop this job will search;

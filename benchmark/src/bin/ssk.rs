@@ -6,7 +6,7 @@ use pegasus::{Configuration, JobConf, ServerConf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "khop", about = "Search khop neighbors on parallel dataflow")]
+#[structopt(name = "khop", about = "Search khop neighbors on parallel plan")]
 struct Config {
     /// The number of hop this job will search;
     #[structopt(short = "k", default_value = "3")]

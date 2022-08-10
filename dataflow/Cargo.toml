@@ -5,7 +5,9 @@ edition = "2021"
 
 
 [dependencies]
+log = "0.4"
 thiserror = "1.0"
 anyhow = "1.0"
+smallvec = "1.9"
 pegasus_common = { path = "../common" }
 pegasus_channel = { path = "../channel" }

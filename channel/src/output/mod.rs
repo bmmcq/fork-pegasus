@@ -25,7 +25,7 @@ pub struct OutputInfo {
     pub scope_level: u8, // 0 ~ 512, This is the the scope level of operator with this output port belongs to.
 }
 
-pub trait Output: Send {
+pub trait Output: Send + 'static {
     fn info(&self) -> OutputInfo;
 
     fn flush(&self) -> Result<(), PushError>;

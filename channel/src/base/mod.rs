@@ -92,7 +92,7 @@ where
     }
 
     let servers = config.servers().collect::<Vec<_>>();
-    // convert dataflow channel id to ipc channel id;
+    // convert plan channel id to ipc channel id;
     let ipc_ch_id = NEXT_IPC_CHANNEL_ID.fetch_add(1, Ordering::SeqCst);
 
     let mut forwards = Vec::with_capacity(local_pushes.len());

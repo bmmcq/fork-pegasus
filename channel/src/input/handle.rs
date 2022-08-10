@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::hash_map::ValuesMut;
 use std::collections::VecDeque;
+use std::fmt::{Debug, Formatter};
 use std::iter::Once;
 
 use ahash::AHashMap;
@@ -21,6 +22,7 @@ pub enum PopEntry<T> {
 
 pub struct MiniScopeBatchStream<T> {
     is_exhaust: bool,
+    is_abort: bool,
     tag: Tag,
     blocks: RefCell<SmallVec<[BlockGuard; 2]>>,
     queue: VecDeque<MiniScopeBatch<T>>,
@@ -65,8 +67,18 @@ impl<T> MiniScopeBatchStream<T> {
     }
 
     pub fn abort(&mut self) {
-        self.queue.clear();
-        self.blocks.borrow_mut().clear();
+        if !self.is_abort {
+            self.is_abort = true;
+            let last = self.queue.pop_back();
+            self.queue.clear();
+            if let Some(mut batch) = last {
+                if batch.is_last() {
+                    batch.take_data();
+                    self.queue.push_back(batch);
+                }
+            }
+            self.blocks.borrow_mut().clear();
+        }
     }
 
     #[inline]
@@ -91,14 +103,22 @@ impl<T> MiniScopeBatchStream<T> {
     }
 
     fn new(tag: Tag) -> Self {
-        Self { is_exhaust: false, tag, blocks: RefCell::new(SmallVec::new()), queue: VecDeque::new() }
+        Self { is_exhaust: false, is_abort: false, tag, blocks: RefCell::new(SmallVec::new()), queue: VecDeque::new() }
     }
 
-    fn push(&mut self, batch: MiniScopeBatch<T>) {
-        if batch.is_last() {
-            self.is_exhaust = true;
+    fn push(&mut self, mut batch: MiniScopeBatch<T>) {
+        if self.is_abort {
+            if batch.is_last() {
+                batch.take_data();
+                self.is_exhaust = true;
+                self.queue.push_back(batch);
+            }
+        } else {
+            if batch.is_last() {
+                self.is_exhaust = true;
+            }
+            self.queue.push_back(batch);
         }
-        self.queue.push_back(batch);
     }
 
     fn set_end(&mut self, eos: Eos) {
@@ -110,6 +130,12 @@ impl<T> MiniScopeBatchStream<T> {
             last.set_end(eos);
             self.queue.push_back(last);
         }
+    }
+}
+
+impl <T> Debug for MiniScopeBatchStream<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "stream of {}", self.tag)
     }
 }
 

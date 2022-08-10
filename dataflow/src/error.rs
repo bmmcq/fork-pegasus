@@ -1,7 +1,7 @@
-use pegasus_channel::error::{IOError, IOErrorKind, PushError};
-use thiserror::Error;
 use pegasus_channel::block::BlockGuard;
+use pegasus_channel::error::{IOError, IOErrorKind, PushError};
 use pegasus_common::tag::Tag;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum InnerError {
@@ -14,38 +14,26 @@ pub enum InnerError {
 
 impl InnerError {
     pub fn check_data_block(&mut self) -> Option<BlockGuard> {
-       match self {
-           InnerError::IO { source } => {
-               match source.cause() {
-                   IOErrorKind::PushErr { source } => {
-                       match source {
-                           PushError::WouldBlock(b) => {
-                               b.take().map(BlockGuard::from)
-                           }
-                           _ => None
-                       }
-                   }
-                   _ => None,
-               }
-           },
-           //_ => None
-       }
+        match self {
+            InnerError::IO { source } => match source.cause() {
+                IOErrorKind::PushErr { source } => match source {
+                    PushError::WouldBlock(b) => b.take().map(BlockGuard::from),
+                    _ => None,
+                },
+                _ => None,
+            },
+            //_ => None
+        }
     }
 
     pub fn check_data_abort(&mut self) -> Option<Tag> {
         match self {
-            InnerError::IO { source } => {
-                match source.cause() {
-                    IOErrorKind::PushErr { source } => {
-                        match source {
-                            PushError::Aborted(tag) => {
-                               Some(tag.clone())
-                            }
-                            _ => None
-                        }
-                    }
+            InnerError::IO { source } => match source.cause() {
+                IOErrorKind::PushErr { source } => match source {
+                    PushError::Aborted(tag) => Some(tag.clone()),
                     _ => None,
-                }
+                },
+                _ => None,
             },
             //_ => None
         }
@@ -65,7 +53,6 @@ pub enum JobExecError {
         source: anyhow::Error,
     },
 }
-
 
 impl From<IOError> for JobExecError {
     fn from(source: IOError) -> Self {

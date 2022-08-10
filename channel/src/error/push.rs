@@ -32,3 +32,13 @@ pub enum PushError {
         source: anyhow::Error,
     },
 }
+
+impl PushError {
+    pub fn is_would_block(&self) -> bool {
+        matches!(self, PushError::WouldBlock(_))
+    }
+
+    pub fn is_abort(&self) -> bool {
+        matches!(self, PushError::Aborted(_))
+    }
+}

@@ -31,7 +31,7 @@ pub type ChannelIndex = u16;
 pub struct ChannelId {
     /// The sequence number of job this channel belongs to;
     pub job_seq: u64,
-    /// The index of a channel in the dataflow execution plan;
+    /// The index of a channel in the plan execution plan;
     pub index: ChannelIndex,
 }
 
