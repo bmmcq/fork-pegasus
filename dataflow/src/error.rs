@@ -1,5 +1,5 @@
 use pegasus_channel::block::BlockGuard;
-use pegasus_channel::error::{IOError, IOErrorKind, PushError};
+use pegasus_channel::error::{IOError, IOErrorKind, PullError, PushError};
 use pegasus_common::tag::Tag;
 use thiserror::Error;
 
@@ -69,6 +69,12 @@ impl From<IOErrorKind> for JobExecError {
 
 impl From<PushError> for JobExecError {
     fn from(source: PushError) -> Self {
+        JobExecError::from(IOError::new(source))
+    }
+}
+
+impl From<PullError> for JobExecError {
+    fn from(source: PullError) -> Self {
         JobExecError::from(IOError::new(source))
     }
 }

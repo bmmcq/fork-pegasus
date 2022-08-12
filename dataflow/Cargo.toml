@@ -9,5 +9,6 @@ log = "0.4"
 thiserror = "1.0"
 anyhow = "1.0"
 smallvec = "1.9"
+nohash-hasher = "0.2.0"
 pegasus_common = { path = "../common" }
 pegasus_channel = { path = "../channel" }

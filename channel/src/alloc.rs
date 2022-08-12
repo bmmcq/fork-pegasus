@@ -12,9 +12,11 @@ use crate::data::{Data, MiniScopeBatch};
 use crate::event::emitter::{BaseEventCollector, BaseEventEmitter};
 use crate::output::batched::evented::EventEosBatchPush;
 use crate::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
-use crate::output::streaming::partition::PartitionRoute;
+use crate::output::streaming::partition::{PartitionRoute, PartitionStreamPush};
 use crate::output::unify::{BaseBatchPull, BuEeBaseBatchPush, EnumStreamBufPush, MsBuEeBaseBatchPush};
 use crate::{ChannelId, ChannelInfo, IOError};
+use crate::input::AnyInput;
+use crate::input::proxy::InputProxy;
 
 pub enum ChannelKind<T: Data> {
     Pipeline,
@@ -23,11 +25,28 @@ pub enum ChannelKind<T: Data> {
     Broadcast,
 }
 
+
 impl<T: Data> ChannelKind<T> {
     pub fn is_pipeline(&self) -> bool {
         matches!(self, Self::Pipeline)
     }
 }
+
+pub struct Channel<T: Data> {
+    pub ch_info: ChannelInfo,
+    pub tag: Tag,
+    pushes: Vec<BuEeBaseBatchPush<T>>,
+    pull: BaseBatchPull<T>
+}
+
+impl <T: Data> Channel<T> {
+    pub fn into_exchange(self, worker_index: u16, router: Box<dyn PartitionRoute<Item = T> + Send + 'static>) -> (EnumStreamBufPush<T>, Box<dyn AnyInput>) {
+        let push = EnumStreamBufPush::Exchange(PartitionStreamPush::new(self.ch_info, worker_index, router, self.pushes));
+        let pull = Box::new(InputProxy::new(worker_index, self.tag, self.ch_info.get_input_info(), self.pull));
+        (push, pull)
+    }
+}
+
 
 pub fn alloc_buf_pipeline<T>(
     worker_index: u16, tag: Tag, ch_info: ChannelInfo,
@@ -51,18 +70,19 @@ where
     (push, pull)
 }
 
-pub async fn alloc_buf_exchange<T>(
-    worker_index: u16, tag: Tag, ch_info: ChannelInfo, config: JobServerConfig,
-    event_emitter: BaseEventEmitter,
-) -> Result<LinkedList<(Vec<BuEeBaseBatchPush<T>>, BaseBatchPull<T>)>, IOError>
+pub async fn alloc_buf_exchange<T>(tag: Tag, ch_info: ChannelInfo, config: &JobServerConfig, event_emitters: &Vec<BaseEventEmitter>,
+) -> Result<VecDeque<Channel<T>>, IOError>
 where
     T: Data,
 {
     let this_server_id = ServerInstance::global().get_id();
-    let mut chs = LinkedList::new();
+    let mut chs = VecDeque::new();
     if let Some(range) = config.get_peers_on_server(this_server_id) {
         let local_peers = range.len() as u16;
+        chs = VecDeque::with_capacity(local_peers as usize);
+        assert_eq!(local_peers as usize, event_emitters.len());
         let total_peers = config.total_peers();
+
         let mut recv_buffers = VecDeque::with_capacity(local_peers as usize);
         for _ in 0..local_peers {
             recv_buffers.push_back(BufferPool::new(ch_info.batch_size, ch_info.batch_capacity));
@@ -94,6 +114,8 @@ where
         };
 
         let (last_pushes, last_pull) = list.pop().expect("unreachable ...");
+        let mut worker_index = range.start;
+        let mut i = 0;
         for (pushes, pull) in list {
             let mut recv_buffers = recv_buffers.clone();
             let mut buf_pushes = Vec::with_capacity(pushes.len());
@@ -105,14 +127,23 @@ where
                     worker_index,
                     target as u16,
                     ch_info.target_port,
-                    event_emitter.clone(),
+                    event_emitters[i].clone(),
                     p,
                 );
                 let push = BufStreamPush::with_pool(ch_info, worker_index, tag.clone(), rbuf, p);
                 buf_pushes.push(push);
             }
-            chs.push_back((buf_pushes, pull));
+ 
+            chs.push_back(Channel {
+                ch_info,
+                tag: tag.clone(),
+                pushes: buf_pushes,
+                pull
+            });
+            worker_index += 1;
+            i += 1;
         }
+
         let mut buf_pushes = Vec::with_capacity(last_pushes.len());
         for (target, p) in last_pushes.into_iter().enumerate() {
             let rbuf = recv_buffers
@@ -122,19 +153,24 @@ where
                 worker_index,
                 target as u16,
                 ch_info.target_port,
-                event_emitter.clone(),
+                event_emitters[i].clone(),
                 p,
             );
             let push = BufStreamPush::with_pool(ch_info, worker_index, tag.clone(), rbuf, p);
             buf_pushes.push(push);
         }
-        chs.push_back((buf_pushes, last_pull));
+        chs.push_back(Channel {
+            ch_info,
+            tag: tag.clone(),
+            pushes: buf_pushes,
+            pull: last_pull
+        });
     }
     Ok(chs)
 }
 
 pub async fn alloc_multi_scope_buf_exchange<T>(
-    worker_index: u16, max_scope_slots: u16, ch_info: ChannelInfo, config: JobServerConfig,
+    worker_index: u16, max_scope_slots: u16, ch_info: ChannelInfo, config: &JobServerConfig,
     event_emitter: BaseEventEmitter,
 ) -> Result<LinkedList<(Vec<MsBuEeBaseBatchPush<T>>, BaseBatchPull<T>)>, IOError>
 where
@@ -223,7 +259,7 @@ where
 }
 
 pub async fn alloc_event_channel(
-    ch_id: ChannelId, config: JobServerConfig,
+    ch_id: ChannelId, config: &JobServerConfig,
 ) -> LinkedList<(BaseEventEmitter, BaseEventCollector)> {
     let this_server_id = ServerInstance::global().get_id();
     let mut chs = LinkedList::new();

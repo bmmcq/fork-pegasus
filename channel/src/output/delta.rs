@@ -153,10 +153,10 @@ impl MergedScopeDelta {
         MergedScopeDelta { origin_scope_level, deltas: ScopeDelta::None }
     }
 
-    pub fn output_scope_level(&self) -> usize {
+    pub fn output_scope_level(&self) -> u8 {
         let x = self.origin_scope_level as i32 + self.deltas.level_delta();
-        assert!(x >= 0);
-        x as usize
+        assert!(x >= 0 && x < u8::MAX as i32);
+        x as u8
     }
 
     pub fn scope_level_delta(&self) -> i32 {

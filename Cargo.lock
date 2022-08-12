@@ -800,6 +800,7 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "log",
+ "nohash-hasher",
  "pegasus_channel",
  "pegasus_common",
  "smallvec",

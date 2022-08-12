@@ -1,19 +1,19 @@
 use pegasus_channel::block::BlockGuard;
 use pegasus_channel::data::{Data, MiniScopeBatch};
-use pegasus_channel::input::handle::{MiniScopeBatchStream, PopEntry};
+use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
 use pegasus_common::tag::Tag;
 
 use crate::error::JobExecError;
 
-pub struct MiniScopeBatchStreamExt<'a, T> {
-    inner: &'a mut MiniScopeBatchStream<T>,
+pub struct MiniScopeBatchStream<'a, T> {
+    inner: &'a mut MiniScopeBatchQueue<T>,
 }
 
-impl<'a, T> MiniScopeBatchStreamExt<'a, T>
+impl<'a, T> MiniScopeBatchStream<'a, T>
 where
     T: Data,
 {
-    pub fn new(inner: &'a mut MiniScopeBatchStream<T>) -> Self {
+    pub fn new(inner: &'a mut MiniScopeBatchQueue<T>) -> Self {
         Self { inner }
     }
 
@@ -68,7 +68,7 @@ where
                 }
             }
 
-            let _discard = self.inner.pull();
+            let _discard = self.inner.pop();
         }
         Ok(())
     }

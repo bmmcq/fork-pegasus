@@ -6,6 +6,8 @@ extern crate log;
 use std::fmt::{Display, Formatter};
 
 use crate::error::{IOError, PullError, PushError};
+use crate::input::InputInfo;
+use crate::output::OutputInfo;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default)]
 pub struct Port {
@@ -27,21 +29,21 @@ impl Display for Port {
 
 pub type ChannelIndex = u16;
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct ChannelId {
     /// The sequence number of job this channel belongs to;
-    pub job_seq: u64,
+    pub job_id: u64,
     /// The index of a channel in the plan execution plan;
     pub index: ChannelIndex,
 }
 
 impl From<(u64, ChannelIndex)> for ChannelId {
     fn from(v: (u64, ChannelIndex)) -> Self {
-        ChannelId { job_seq: v.0, index: v.1 }
+        ChannelId { job_id: v.0, index: v.1 }
     }
 }
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Default)]
 pub struct ChannelInfo {
     pub ch_id: ChannelId,
     pub scope_level: u8,
@@ -51,6 +53,16 @@ pub struct ChannelInfo {
     pub batch_capacity: u16,
     pub source_port: Port,
     pub target_port: Port,
+}
+
+impl ChannelInfo {
+    pub fn get_input_info(&self) -> InputInfo {
+        InputInfo::new(self.target_port, self.scope_level)
+    }
+    
+    pub fn get_output_info(&self) -> OutputInfo {
+        OutputInfo { port: self.source_port, scope_level: self.scope_level }
+    }
 }
 
 #[enum_dispatch]

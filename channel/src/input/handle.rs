@@ -20,7 +20,7 @@ pub enum PopEntry<T> {
     Ready(T),
 }
 
-pub struct MiniScopeBatchStream<T> {
+pub struct MiniScopeBatchQueue<T> {
     is_exhaust: bool,
     is_abort: bool,
     tag: Tag,
@@ -28,7 +28,7 @@ pub struct MiniScopeBatchStream<T> {
     queue: VecDeque<MiniScopeBatch<T>>,
 }
 
-impl<T> MiniScopeBatchStream<T> {
+impl<T> MiniScopeBatchQueue<T> {
     pub fn tag(&self) -> &Tag {
         &self.tag
     }
@@ -47,7 +47,7 @@ impl<T> MiniScopeBatchStream<T> {
         }
     }
 
-    pub fn pull(&mut self) -> PopEntry<MiniScopeBatch<T>> {
+    pub fn pop(&mut self) -> PopEntry<MiniScopeBatch<T>> {
         if self.is_block() {
             return PopEntry::NotReady;
         }
@@ -133,16 +133,16 @@ impl<T> MiniScopeBatchStream<T> {
     }
 }
 
-impl <T> Debug for MiniScopeBatchStream<T> {
+impl <T> Debug for MiniScopeBatchQueue<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "stream of {}", self.tag)
     }
 }
 
 pub trait MiniScopeBatchInput<'a, T: Data> {
-    type Result: Iterator<Item = &'a mut MiniScopeBatchStream<T>>;
+    type Result: Iterator<Item = &'a mut MiniScopeBatchQueue<T>>;
 
-    fn as_streams(&'a mut self) -> Self::Result;
+    fn iter(&'a mut self) -> Self::Result;
 }
 
 pub struct InputHandle<T, P> {
@@ -150,7 +150,7 @@ pub struct InputHandle<T, P> {
     worker_index: u16,
     info: InputInfo,
     tag: Tag,
-    outstanding: MiniScopeBatchStream<T>,
+    outstanding: MiniScopeBatchQueue<T>,
     input: P,
 }
 
@@ -160,7 +160,7 @@ impl<T, P> InputHandle<T, P> {
             is_exhaust: false,
             worker_index,
             info,
-            outstanding: MiniScopeBatchStream::new(tag.clone()),
+            outstanding: MiniScopeBatchQueue::new(tag.clone()),
             tag,
             input,
         }
@@ -205,7 +205,7 @@ where
         Ok(!self.outstanding.is_empty())
     }
 
-    pub fn streams(&mut self) -> Once<&mut MiniScopeBatchStream<T>> {
+    pub fn streams(&mut self) -> Once<&mut MiniScopeBatchQueue<T>> {
         std::iter::once(&mut self.outstanding)
     }
 
@@ -228,9 +228,9 @@ where
     T: Data,
     P: Pull<MiniScopeBatch<T>>,
 {
-    type Result = Once<&'a mut MiniScopeBatchStream<T>>;
+    type Result = Once<&'a mut MiniScopeBatchQueue<T>>;
 
-    fn as_streams(&'a mut self) -> Self::Result {
+    fn iter(&'a mut self) -> Self::Result {
         self.streams()
     }
 }
@@ -239,7 +239,7 @@ pub struct MultiScopeInputHandle<T, P> {
     is_exhaust: bool,
     worker_index: u16,
     info: InputInfo,
-    outstanding: AHashMap<Tag, MiniScopeBatchStream<T>>,
+    outstanding: AHashMap<Tag, MiniScopeBatchQueue<T>>,
     input: P,
 }
 
@@ -319,7 +319,7 @@ where
         Ok(())
     }
 
-    fn new_stream(&mut self, tag: Tag) -> MiniScopeBatchStream<T> {
+    fn new_stream(&mut self, tag: Tag) -> MiniScopeBatchQueue<T> {
         let mut find = None;
         for (tag, stream) in self.outstanding.iter() {
             if stream.is_empty() && stream.is_exhaust {
@@ -338,23 +338,23 @@ where
                 unreachable!("unexpected find result;");
             }
         } else {
-            MiniScopeBatchStream::new(tag)
+            MiniScopeBatchQueue::new(tag)
         }
     }
 }
 
 pub struct Streams<'a, T> {
-    inner: ValuesMut<'a, Tag, MiniScopeBatchStream<T>>
+    inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>
 }
 
 impl<'a, T> Streams<'a, T> {
-    fn new(inner: ValuesMut<'a, Tag, MiniScopeBatchStream<T>>) -> Streams<T> where T: Data {
+    fn new(inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>) -> Streams<T> where T: Data {
         Self { inner }
     }
 }
 
 impl <'a, T> Iterator for Streams<'a, T> {
-    type Item = &'a mut MiniScopeBatchStream<T>;
+    type Item = &'a mut MiniScopeBatchQueue<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(next) = self.inner.next() {
@@ -369,7 +369,7 @@ impl <'a, T> Iterator for Streams<'a, T> {
 impl <'a, T, P> MiniScopeBatchInput<'a, T> for MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
     type Result = Streams<'a, T>;
 
-    fn as_streams(&'a mut self) -> Self::Result {
+    fn iter(&'a mut self) -> Self::Result {
         self.streams()
     }
 }

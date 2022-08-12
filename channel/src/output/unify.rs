@@ -20,6 +20,7 @@ pub type BuEeBaseBatchPush<T> = BufStreamPush<T, EeBaseBatchPush<T>>;
 pub type MsBuEeBaseBatchPush<T> = MultiScopeBufStreamPush<T, EeBaseBatchPush<T>>;
 
 pub enum EnumStreamBufPush<T: Data + Encode> {
+    Null,
     Pipeline(BufStreamPush<T, BaseBatchPush<T>>),
     MultiScopePipeline(MultiScopeBufStreamPush<T, BaseBatchPush<T>>),
     Exchange(PartitionStreamPush<T, BufStreamPush<T, EeBaseBatchPush<T>>>),
@@ -49,6 +50,7 @@ where
 impl<T: Data> Pinnable for EnumStreamBufPush<T> {
     fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(true),
             EnumStreamBufPush::Pipeline(p) => p.pin(tag),
             EnumStreamBufPush::MultiScopePipeline(p) => p.pin(tag),
             EnumStreamBufPush::Exchange(p) => p.pin(tag),
@@ -61,6 +63,7 @@ impl<T: Data> Pinnable for EnumStreamBufPush<T> {
 
     fn unpin(&mut self) -> Result<(), PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(()),
             EnumStreamBufPush::Pipeline(p) => p.unpin(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.unpin(),
             EnumStreamBufPush::Exchange(p) => p.unpin(),
@@ -75,6 +78,7 @@ impl<T: Data> Pinnable for EnumStreamBufPush<T> {
 impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
     fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(Pushed::Finished),
             EnumStreamBufPush::Pipeline(p) => p.push(tag, msg),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push(tag, msg),
             EnumStreamBufPush::Exchange(p) => p.push(tag, msg),
@@ -87,6 +91,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
 
     fn push_last(&mut self, msg: T, end: Eos) -> Result<(), PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(()),
             EnumStreamBufPush::Pipeline(p) => p.push_last(msg, end),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push_last(msg, end),
             EnumStreamBufPush::Exchange(p) => p.push_last(msg, end),
@@ -101,6 +106,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
         &mut self, tag: &Tag, iter: &mut I,
     ) -> Result<Pushed<T>, PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(Pushed::Finished),
             EnumStreamBufPush::Pipeline(p) => p.push_iter(tag, iter),
             EnumStreamBufPush::MultiScopePipeline(p) => p.push_iter(tag, iter),
             EnumStreamBufPush::Exchange(p) => p.push_iter(tag, iter),
@@ -113,6 +119,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
 
     fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(()),
             EnumStreamBufPush::Pipeline(p) => p.notify_end(end),
             EnumStreamBufPush::MultiScopePipeline(p) => p.notify_end(end),
             EnumStreamBufPush::Exchange(p) => p.notify_end(end),
@@ -125,6 +132,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
 
     fn flush(&mut self) -> Result<(), PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(()),
             EnumStreamBufPush::Pipeline(p) => p.flush(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.flush(),
             EnumStreamBufPush::Exchange(p) => p.flush(),
@@ -137,6 +145,7 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
 
     fn close(&mut self) -> Result<(), PushError> {
         match self {
+            EnumStreamBufPush::Null => Ok(()),
             EnumStreamBufPush::Pipeline(p) => p.close(),
             EnumStreamBufPush::MultiScopePipeline(p) => p.close(),
             EnumStreamBufPush::Exchange(p) => p.close(),

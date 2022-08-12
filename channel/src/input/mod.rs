@@ -10,6 +10,15 @@ pub struct InputInfo {
     port: Port,
 }
 
+impl InputInfo {
+    pub fn new(port: Port, scope_level: u8) -> Self {
+        Self {
+            port, 
+            scope_level
+        }
+    }
+}
+
 pub trait Input: Send + 'static {
     fn info(&self) -> InputInfo;
 

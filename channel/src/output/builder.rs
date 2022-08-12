@@ -20,11 +20,11 @@ use crate::data::Data;
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
 use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamBufPush;
-use crate::output::{Output, OutputInfo};
+use crate::output::{AnyOutput, Output, OutputInfo};
 use crate::Port;
 
 pub trait OutputBuilder {
-    fn build(self: Box<Self>) -> Option<Box<dyn Output>>;
+    fn build(self: Box<Self>) -> Box<dyn AnyOutput>;
 }
 
 pub struct OutputBuilderImpl<D: Data> {
@@ -49,7 +49,7 @@ impl<D: Data> OutputBuilderImpl<D> {
     }
 
     pub fn get_scope_level(&self) -> u8 {
-        self.info.scope_level
+        self.delta.output_scope_level()
     }
 
     pub fn set_push(&mut self, push: EnumStreamBufPush<D>) {
@@ -58,6 +58,12 @@ impl<D: Data> OutputBuilderImpl<D> {
 
     pub fn add_delta(&mut self, delta: ScopeDelta) -> Option<ScopeDelta> {
         self.delta.add_delta(delta)
+    }
+    
+    pub fn shared(self) -> SharedOutputBuilder<D> {
+        SharedOutputBuilder {
+            inner: Rc::new(RefCell::new(self))
+        }
     }
 }
 
@@ -87,15 +93,23 @@ impl<D: Data> SharedOutputBuilder<D> {
     }
 }
 
+impl <D: Data> Clone for SharedOutputBuilder<D> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone()
+        }
+    }
+}
+
 impl<D: Data> OutputBuilder for SharedOutputBuilder<D> {
-    fn build(self: Box<Self>) -> Option<Box<dyn Output>> {
+    fn build(self: Box<Self>) -> Box<dyn AnyOutput> {
         let mut bm = self.inner.borrow_mut();
-        let push = bm.push.take()?;
+        let push = bm.push.take().unwrap_or(EnumStreamBufPush::Null);
         let worker_index = self.inner.borrow().worker_index;
         if bm.info.scope_level == 0 {
-            Some(Box::new(OutputProxy::new(worker_index, bm.info, bm.delta, push)))
+            Box::new(OutputProxy::new(worker_index, bm.info, bm.delta, push))
         } else {
-            Some(Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, bm.delta, push)))
+            Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, bm.delta, push))
         }
     }
 }

@@ -67,7 +67,7 @@ pub fn alloc_local_exchange<T: Data>(peers: u16, ch_id: ChannelId) -> Vec<(Vec<B
 }
 
 pub async fn alloc_cluster_exchange<T, D>(
-    ch_id: ChannelId, config: JobServerConfig, decoders: Vec<D>,
+    ch_id: ChannelId, config: &JobServerConfig, decoders: Vec<D>,
 ) -> Result<Vec<(Vec<BasePush<T>>, BasePull<T>)>, IOError>
 where
     T: Data + Decode,

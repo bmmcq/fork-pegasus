@@ -1,3 +1,4 @@
+use anyhow::Error;
 use pegasus_common::tag::Tag;
 
 use crate::data::Data;
@@ -11,6 +12,14 @@ pub trait PartitionRoute {
     type Item;
 
     fn partition_by(&self, item: &Self::Item) -> Result<u64, anyhow::Error>;
+}
+
+impl <T> PartitionRoute for Box<T> where T: PartitionRoute + ?Sized {
+    type Item = T::Item;
+
+    fn partition_by(&self, item: &Self::Item) -> Result<u64, Error> {
+        (**self).partition_by(item)
+    }
 }
 
 struct Partitioner<D> {

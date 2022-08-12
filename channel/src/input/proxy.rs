@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::{RefCell, RefMut};
 
 use pegasus_common::downcast::AsAny;
@@ -28,6 +29,16 @@ where
             .as_any_ref()
             .downcast_ref::<Self>()
             .map(|i| i.0.borrow_mut())
+    }
+}
+
+impl <T> AsAny for InputProxy<T> where T: Data {
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
     }
 }
 

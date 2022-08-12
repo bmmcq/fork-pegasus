@@ -50,4 +50,24 @@ pub struct JobConfig {
     servers: JobServerConfig,
 }
 
-impl JobConfig {}
+impl JobConfig {
+    pub fn job_id(&self) -> u64 {
+        self.job_id
+    }
+
+    pub fn job_name(&self) -> &str {
+        self.job_name.as_str()
+    }
+
+    pub fn default_batch_size(&self) -> u16 {
+        self.default_batch_size
+    }
+
+    pub fn default_batch_capacity(&self) -> u16 {
+        self.default_batch_capacity
+    }
+
+    pub fn server_config(&self) -> &JobServerConfig {
+        &self.servers
+    }
+}

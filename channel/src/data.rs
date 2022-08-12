@@ -196,3 +196,4 @@ impl<D: Decode> Decode for MiniScopeBatch<D> {
         todo!()
     }
 }
+
