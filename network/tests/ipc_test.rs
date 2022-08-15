@@ -120,7 +120,7 @@ fn mock_process_0(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected errors {}", e);
                         }
                     }
                     _ => (),
@@ -166,7 +166,7 @@ fn mock_process_1(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected errors {}", e);
                         }
                     }
                     _ => (),
@@ -211,7 +211,7 @@ fn mock_process_2(servers: Vec<Server>, conf: ConnectionParams) -> std::thread::
                             info!("received all;");
                             break;
                         } else {
-                            panic!("unexpected error {}", e);
+                            panic!("unexpected errors {}", e);
                         }
                     }
                     _ => (),

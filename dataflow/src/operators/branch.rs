@@ -1,9 +1,9 @@
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::AnyOutput;
 
-use crate::error::JobExecError;
+use crate::errors::JobExecError;
 
-pub trait BranchFunction : Send + 'static {
+pub trait BranchFunction: Send + 'static {
     fn on_receive(
         &mut self, input: &Box<dyn AnyInput>, left_out: &Box<dyn AnyOutput>, right_out: &Box<dyn AnyOutput>,
     ) -> Result<(), JobExecError>;
@@ -17,12 +17,10 @@ pub struct BranchOperator {
 }
 
 impl BranchOperator {
-    pub fn new(input: Box<dyn AnyInput>, left_out: Box<dyn AnyOutput>, right_out: Box<dyn AnyOutput>, func: Box<dyn BranchFunction>) -> Self {
-        Self {
-            input: [input],
-            outputs: [left_out, right_out],
-            func,
-        }
+    pub fn new(
+        input: Box<dyn AnyInput>, left_out: Box<dyn AnyOutput>, right_out: Box<dyn AnyOutput>,
+        func: Box<dyn BranchFunction>,
+    ) -> Self {
+        Self { input: [input], outputs: [left_out, right_out], func }
     }
-
 }

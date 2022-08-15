@@ -95,7 +95,7 @@ fn resolve_server_addr(
                     not_connect -= 1;
                 }
                 Err(e) => {
-                    eprintln!("error address format {} error: {}", buf, e)
+                    eprintln!("errors address format {} errors: {}", buf, e)
                 }
             }
         }

@@ -32,7 +32,10 @@ where
     }
 }
 
-impl <T> AsAny for InputProxy<T> where T: Data {
+impl<T> AsAny for InputProxy<T>
+where
+    T: Data,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }

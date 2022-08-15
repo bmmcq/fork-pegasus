@@ -568,7 +568,7 @@ pub fn await_termination() {
             .take()
         {
             info!("waiting executor terminate...");
-            join.join().expect("Executor runtime error");
+            join.join().expect("Executor runtime errors");
         }
         if *TRACE_SELECT_ENABLE {
             let cost = TRACE_SELECT_COST.load(Ordering::SeqCst);

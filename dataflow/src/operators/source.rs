@@ -1,16 +1,18 @@
 use std::any::Any;
+
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
 use pegasus_channel::input::AnyInput;
-use pegasus_channel::output::AnyOutput;
 use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_channel::output::handle::MiniScopeStreamSinkFactory;
 use pegasus_channel::output::proxy::OutputProxy;
+use pegasus_channel::output::AnyOutput;
 use pegasus_common::downcast::AsAny;
 use pegasus_common::tag::Tag;
-use crate::error::JobExecError;
+
+use crate::errors::JobExecError;
 use crate::operators::builder::Builder;
-use crate::operators::Operator;
+use crate::operators::{Operator, State};
 
 pub struct SourceOperator<Iter> {
     extern_data: Option<Iter>,
@@ -18,7 +20,11 @@ pub struct SourceOperator<Iter> {
     output: [Box<dyn AnyOutput>; 1],
 }
 
-impl <Iter> Operator for SourceOperator<Iter> where Iter: Iterator + Send +'static, Iter::Item: Data {
+impl<Iter> Operator for SourceOperator<Iter>
+where
+    Iter: Iterator + Send + 'static,
+    Iter::Item: Data,
+{
     fn inputs(&self) -> &[Box<dyn AnyInput>] {
         self._inputs.as_slice()
     }
@@ -27,29 +33,34 @@ impl <Iter> Operator for SourceOperator<Iter> where Iter: Iterator + Send +'stat
         self.output.as_slice()
     }
 
-    fn fire(&mut self) -> Result<bool, JobExecError> {
-        let mut output_proxy = OutputProxy::<Iter::Item>::downcast(&self.output[0]).expect("output type cast fail;");
+    fn fire(&mut self) -> Result<State, JobExecError> {
+        let mut output_proxy =
+            OutputProxy::<Iter::Item>::downcast(&self.output[0]).expect("output type cast fail;");
         if output_proxy.has_blocks() {
             output_proxy.try_unblock()?;
-            Ok(!output_proxy.has_blocks())
+            if output_proxy.has_blocks() {
+                Ok(State::Blocking(1))
+            } else {
+                Ok(State::Finished)
+            }
         } else if let Some(extern_data) = self.extern_data.take() {
-            let mut session = output_proxy.new_session(&Tag::Null).expect("new session expect not none;");
+            let mut session = output_proxy
+                .new_session(&Tag::Null)
+                .expect("new session expect not none;");
             match session.give_iterator(extern_data) {
-                Ok(_) => {
-                    Ok(true)
-                }
+                Ok(_) => Ok(State::Finished),
                 Err(err) => {
                     if err.is_would_block() {
-                        Ok(false)
+                        Ok(State::Blocking(1))
                     } else if err.is_abort() {
-                        Ok(true)
+                        Ok(State::Finished)
                     } else {
                         Err(err)?
                     }
                 }
             }
         } else {
-            Ok(true)
+            Ok(State::Finished)
         }
     }
 
@@ -61,20 +72,20 @@ impl <Iter> Operator for SourceOperator<Iter> where Iter: Iterator + Send +'stat
 }
 
 pub struct SourceOperatorBuilder<Iter> {
-    extern_data: Iter, 
-    output: Box<dyn OutputBuilder>
+    extern_data: Iter,
+    output: Box<dyn OutputBuilder>,
 }
 
-impl <Iter> SourceOperatorBuilder<Iter> {
+impl<Iter> SourceOperatorBuilder<Iter> {
     pub fn new(extern_data: Iter, output: Box<dyn OutputBuilder>) -> Self {
-        Self {
-            extern_data, 
-            output
-        }
+        Self { extern_data, output }
     }
 }
 
-impl <Iter> AsAny for SourceOperatorBuilder<Iter> where Iter: Send + 'static {
+impl<Iter> AsAny for SourceOperatorBuilder<Iter>
+where
+    Iter: Sized + 'static,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -84,19 +95,17 @@ impl <Iter> AsAny for SourceOperatorBuilder<Iter> where Iter: Send + 'static {
     }
 }
 
-impl <Iter> Builder for SourceOperatorBuilder<Iter> 
-    where 
-        Iter: IntoIterator, 
-        Iter::Item : Data, 
-        Iter::IntoIter: Send + 'static {
+impl<Iter> Builder for SourceOperatorBuilder<Iter>
+where
+    Iter: IntoIterator + 'static,
+    Iter::Item: Data,
+    Iter::IntoIter: Send + 'static,
+{
     fn build(self: Box<Self>) -> Box<dyn Operator> {
         Box::new(SourceOperator {
-            extern_data: Some(self.extern_data.into_iter()), 
-            _inputs: vec![], 
-            output: [self.output.build()]
+            extern_data: Some(self.extern_data.into_iter()),
+            _inputs: vec![],
+            output: [self.output.build()],
         })
     }
 }
-
-
-

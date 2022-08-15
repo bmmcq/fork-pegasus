@@ -1,4 +1,3 @@
-use anyhow::Error;
 use pegasus_common::tag::Tag;
 
 use crate::data::Data;
@@ -11,14 +10,46 @@ use crate::ChannelInfo;
 pub trait PartitionRoute {
     type Item;
 
-    fn partition_by(&self, item: &Self::Item) -> Result<u64, anyhow::Error>;
+    fn partition_by(&self, item: &Self::Item) -> u64;
 }
 
-impl <T> PartitionRoute for Box<T> where T: PartitionRoute + ?Sized {
+impl<T> PartitionRoute for Box<T>
+where
+    T: PartitionRoute + ?Sized,
+{
     type Item = T::Item;
 
-    fn partition_by(&self, item: &Self::Item) -> Result<u64, Error> {
+    fn partition_by(&self, item: &Self::Item) -> u64 {
         (**self).partition_by(item)
+    }
+}
+
+struct FnPartitionRoute<F, D> {
+    func: F,
+    _ph: std::marker::PhantomData<D>,
+}
+
+unsafe impl<F, D> Send for FnPartitionRoute<F, D> where F: Send + 'static {}
+
+impl<F, D> PartitionRoute for FnPartitionRoute<F, D>
+where
+    F: Fn(&D) -> u64,
+{
+    type Item = D;
+
+    fn partition_by(&self, item: &Self::Item) -> u64 {
+        (self.func)(item)
+    }
+}
+
+impl<F, D> From<F> for Box<dyn PartitionRoute<Item = D> + Send + 'static>
+where
+    D: 'static,
+    F: Fn(&D) -> u64 + Send + 'static,
+{
+    fn from(func: F) -> Self {
+        let fr = FnPartitionRoute { func, _ph: std::marker::PhantomData };
+        Box::new(fr)
     }
 }
 
@@ -37,9 +68,9 @@ impl<D> Partitioner<D> {
     }
 
     #[inline]
-    fn get_partition(&self, item: &D) -> Result<usize, anyhow::Error> {
-        let par_key = self.router.partition_by(item)?;
-        Ok(self.rectifier.get(par_key))
+    fn get_partition(&self, item: &D) -> usize {
+        let par_key = self.router.partition_by(item);
+        self.rectifier.get(par_key)
     }
 }
 
@@ -89,7 +120,7 @@ where
 {
     fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
-        let target = self.route.get_partition(&msg)?;
+        let target = self.route.get_partition(&msg);
         self.pushes[target].push(tag, msg)
     }
 
@@ -99,7 +130,7 @@ where
         end.total_send = 0;
         end.global_total_send = 0;
 
-        let target = self.route.get_partition(&msg)?;
+        let target = self.route.get_partition(&msg);
         for (i, p) in self.pushes.iter().enumerate() {
             let count = p.count_pushed(&end.tag);
             end.add_child_send(i as u16, count);
@@ -125,7 +156,7 @@ where
         }
 
         while let Some(item) = iter.next() {
-            let target = self.route.get_partition(&item)?;
+            let target = self.route.get_partition(&item);
             if let Pushed::WouldBlock(v) = self.pushes[target].push(tag, item)? {
                 return Ok(Pushed::WouldBlock(v));
             }

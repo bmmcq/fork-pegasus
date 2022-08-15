@@ -103,7 +103,13 @@ impl<T> MiniScopeBatchQueue<T> {
     }
 
     fn new(tag: Tag) -> Self {
-        Self { is_exhaust: false, is_abort: false, tag, blocks: RefCell::new(SmallVec::new()), queue: VecDeque::new() }
+        Self {
+            is_exhaust: false,
+            is_abort: false,
+            tag,
+            blocks: RefCell::new(SmallVec::new()),
+            queue: VecDeque::new(),
+        }
     }
 
     fn push(&mut self, mut batch: MiniScopeBatch<T>) {
@@ -133,7 +139,7 @@ impl<T> MiniScopeBatchQueue<T> {
     }
 }
 
-impl <T> Debug for MiniScopeBatchQueue<T> {
+impl<T> Debug for MiniScopeBatchQueue<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "stream of {}", self.tag)
     }
@@ -267,7 +273,7 @@ where
     }
 
     pub fn streams(&mut self) -> Streams<T> {
-         Streams::new(self.outstanding.values_mut())
+        Streams::new(self.outstanding.values_mut())
     }
 
     pub fn notify_eos(&mut self, eos: Eos) -> Result<(), PullError> {
@@ -344,16 +350,19 @@ where
 }
 
 pub struct Streams<'a, T> {
-    inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>
+    inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>,
 }
 
 impl<'a, T> Streams<'a, T> {
-    fn new(inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>) -> Streams<T> where T: Data {
+    fn new(inner: ValuesMut<'a, Tag, MiniScopeBatchQueue<T>>) -> Streams<T>
+    where
+        T: Data,
+    {
         Self { inner }
     }
 }
 
-impl <'a, T> Iterator for Streams<'a, T> {
+impl<'a, T> Iterator for Streams<'a, T> {
     type Item = &'a mut MiniScopeBatchQueue<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -366,7 +375,11 @@ impl <'a, T> Iterator for Streams<'a, T> {
     }
 }
 
-impl <'a, T, P> MiniScopeBatchInput<'a, T> for MultiScopeInputHandle<T, P> where T: Data, P: Pull<MiniScopeBatch<T>> {
+impl<'a, T, P> MiniScopeBatchInput<'a, T> for MultiScopeInputHandle<T, P>
+where
+    T: Data,
+    P: Pull<MiniScopeBatch<T>>,
+{
     type Result = Streams<'a, T>;
 
     fn iter(&'a mut self) -> Self::Result {

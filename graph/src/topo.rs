@@ -122,7 +122,7 @@ impl Iterator for Neighbors {
             None
         } else {
             if self.ptr.is_null() {
-                panic!("null point error;")
+                panic!("null point errors;")
             }
             let mut ptr = self.ptr;
             let next = self.next;
@@ -130,7 +130,7 @@ impl Iterator for Neighbors {
             Some(unsafe {
                 ptr = ptr.add(next);
                 if ptr.is_null() {
-                    panic!("null point error;")
+                    panic!("null point errors;")
                 }
                 *ptr as u64
             })

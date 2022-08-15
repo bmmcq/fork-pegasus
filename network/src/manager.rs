@@ -80,7 +80,7 @@ impl SimpleServerDetector {
         let mut peers = self
             .peers_mutex
             .lock()
-            .expect("unexpected error locking when update peer view");
+            .expect("unexpected errors locking when update peer view");
         *peers = new_peers;
     }
 }
@@ -90,7 +90,7 @@ impl ServerDetect for SimpleServerDetector {
         let peers = self
             .peers_mutex
             .lock()
-            .expect("unexpected error locking when fetch servers");
+            .expect("unexpected errors locking when fetch servers");
         peers.clone()
     }
 }

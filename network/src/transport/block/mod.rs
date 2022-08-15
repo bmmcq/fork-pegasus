@@ -66,7 +66,7 @@ pub fn listen_on<A: ToSocketAddrs>(
                     }
                     Err(e) => {
                         if e.kind() != std::io::ErrorKind::WouldBlock {
-                            error!("TcpListener call accept error: {:?}", e);
+                            error!("TcpListener call accept errors: {:?}", e);
                         }
                         std::thread::sleep(Duration::from_secs(1));
                     }

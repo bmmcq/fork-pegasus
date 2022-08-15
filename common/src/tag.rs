@@ -16,6 +16,7 @@
 //! Tags implementation.
 
 use std::hash::{Hash, Hasher};
+
 use valley::codec::*;
 
 /// Hierarchical tag which identify the data in stream;

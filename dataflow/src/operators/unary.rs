@@ -1,26 +1,27 @@
 use std::any::Any;
+
 use pegasus_channel::block::BlockHandle;
-use pegasus_channel::data::{Data};
+use pegasus_channel::data::Data;
 use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
 use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
-use pegasus_channel::input::{AnyInput};
+use pegasus_channel::input::AnyInput;
+use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_channel::output::handle::{MiniScopeStreamSink, MiniScopeStreamSinkFactory};
 use pegasus_channel::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use pegasus_channel::output::streaming::{Pinnable, StreamPush};
 use pegasus_channel::output::AnyOutput;
-use pegasus_channel::output::builder::{OutputBuilder, SharedOutputBuilder};
 use pegasus_common::downcast::AsAny;
 
 use super::{MultiScopeOutput, Operator};
-use crate::error::JobExecError;
+use crate::errors::JobExecError;
 use crate::operators::builder::Builder;
 use crate::operators::consume::MiniScopeBatchStream;
-use crate::operators::Output;
+use crate::operators::{State, Output};
 
-pub trait UnaryFunction : Send + 'static {
+pub trait UnaryFunction: Send + 'static {
     fn on_fire(
         &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-    ) -> Result<bool, JobExecError>;
+    ) -> Result<State, JobExecError>;
 }
 
 pub struct UnaryImpl<I, O, F> {
@@ -53,7 +54,9 @@ where
     O: Data,
     T: StreamPush<O> + BlockHandle<O> + Pinnable,
     SF: MiniScopeStreamSinkFactory<O, T>,
-    F: FnMut(&mut MiniScopeBatchStream<I>, &mut MiniScopeStreamSink<O, T>) -> Result<(), JobExecError> + Send + 'static,
+    F: FnMut(&mut MiniScopeBatchStream<I>, &mut MiniScopeStreamSink<O, T>) -> Result<(), JobExecError>
+        + Send
+        + 'static,
 {
     if let Some(mut sink) = sink_factory.new_session(src.tag()) {
         {
@@ -103,20 +106,21 @@ where
     I: Data,
     O: Data,
     F: FnMut(
-        &mut MiniScopeBatchStream<I>,
-        &mut MiniScopeStreamSink<O, Output<O>>,
-    ) -> Result<(), JobExecError> + Send + 'static,
+            &mut MiniScopeBatchStream<I>,
+            &mut MiniScopeStreamSink<O, Output<O>>,
+        ) -> Result<(), JobExecError>
+        + Send
+        + 'static,
 {
     fn on_fire(
         &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-    ) -> Result<bool, JobExecError> {
-
+    ) -> Result<State, JobExecError> {
         let mut output_proxy = OutputProxy::<O>::downcast(output).expect("output type cast fail;");
 
         if output_proxy.has_blocks() {
             output_proxy.try_unblock()?;
             if output_proxy.has_blocks() {
-                return Ok(false);
+                return Ok(State::Blocking(1));
             }
         }
 
@@ -129,7 +133,13 @@ where
             unary_consume(stream, &mut *output_proxy, &mut self.func)?;
         }
 
-        Ok(!output_proxy.has_blocks() && input_proxy.is_exhaust())
+        if output_proxy.has_blocks() {
+            Ok(State::Blocking(1))
+        } else if input_proxy.is_exhaust() {
+            Ok(State::Finished)
+        } else {
+            Ok(State::Idle)
+        }
     }
 }
 
@@ -138,13 +148,15 @@ where
     I: Data,
     O: Data,
     F: FnMut(
-        &mut MiniScopeBatchStream<I>,
-        &mut MiniScopeStreamSink<O, MultiScopeOutput<O>>,
-    ) -> Result<(), JobExecError> + Send + 'static,
+            &mut MiniScopeBatchStream<I>,
+            &mut MiniScopeStreamSink<O, MultiScopeOutput<O>>,
+        ) -> Result<(), JobExecError>
+        + Send
+        + 'static,
 {
     fn on_fire(
         &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-    ) -> Result<bool, JobExecError> {
+    ) -> Result<State, JobExecError> {
         let mut input_proxy = MultiScopeInputProxy::<I>::downcast(input).expect("input type cast fail;");
         let mut output_proxy =
             MultiScopeOutputProxy::<O>::downcast(output).expect("output type cast fail;");
@@ -158,7 +170,14 @@ where
                 unary_consume(stream, &mut *output_proxy, &mut self.func)?;
             }
         }
-        Ok(!output_proxy.has_blocks() && input_proxy.is_exhaust())
+
+        if output_proxy.has_blocks() {
+            Ok(State::Blocking(output_proxy.block_scope_size()))
+        } else if input_proxy.is_exhaust() {
+            Ok(State::Finished)
+        } else {
+            Ok(State::Idle)
+        }
     }
 }
 
@@ -174,8 +193,10 @@ impl<F> UnaryOperator<F> {
     }
 }
 
-impl<F> Operator for UnaryOperator<F> where F: UnaryFunction {
-
+impl<F> Operator for UnaryOperator<F>
+where
+    F: UnaryFunction,
+{
     fn inputs(&self) -> &[Box<dyn AnyInput>] {
         self.input.as_slice()
     }
@@ -184,7 +205,7 @@ impl<F> Operator for UnaryOperator<F> where F: UnaryFunction {
         self.output.as_slice()
     }
 
-    fn fire(&mut self) -> Result<bool, JobExecError> {
+    fn fire(&mut self) -> Result<State, JobExecError> {
         self.func
             .on_fire(&self.input[0], &self.output[0])
     }
@@ -202,17 +223,19 @@ pub struct UnaryOperatorBuilder<F> {
     func: F,
 }
 
-impl <F> UnaryOperatorBuilder<F> {
-    pub fn new<T>(input: Box<dyn AnyInput>, output: T, func: F) -> Self where T: OutputBuilder {
-        Self {
-            input, 
-            output: Box::new(output), 
-            func, 
-        }
+impl<F> UnaryOperatorBuilder<F> {
+    pub fn new<T>(input: Box<dyn AnyInput>, output: T, func: F) -> Self
+    where
+        T: OutputBuilder + 'static,
+    {
+        Self { input, output: Box::new(output), func }
     }
 }
 
-impl <F> AsAny for UnaryOperatorBuilder<F> where F : Send + 'static {
+impl<F> AsAny for UnaryOperatorBuilder<F>
+where
+    F: Send + 'static,
+{
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -222,7 +245,10 @@ impl <F> AsAny for UnaryOperatorBuilder<F> where F : Send + 'static {
     }
 }
 
-impl <F> Builder for UnaryOperatorBuilder<F> where F: UnaryFunction {
+impl<F> Builder for UnaryOperatorBuilder<F>
+where
+    F: UnaryFunction,
+{
     fn build(self: Box<Self>) -> Box<dyn Operator> {
         let output = self.output.build();
         Box::new(UnaryOperator::new(self.input, output, self.func))

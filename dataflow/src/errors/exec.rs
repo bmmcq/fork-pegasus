@@ -42,12 +42,12 @@ impl InnerError {
 
 #[derive(Error, Debug)]
 pub enum JobExecError {
-    #[error("JobExec inner error: {source}")]
+    #[error("JobExec inner errors: {source}")]
     Inner {
         #[from]
         source: InnerError,
     },
-    #[error("JobExec user error: {source}")]
+    #[error("JobExec user errors: {source}")]
     UserError {
         #[from]
         source: anyhow::Error,

@@ -1,5 +1,6 @@
 use std::any::Any;
 use std::cell::{RefCell, RefMut};
+
 use pegasus_common::downcast::AsAny;
 
 use crate::data::Data;
@@ -29,7 +30,7 @@ impl<D: Data> OutputProxy<D> {
     }
 }
 
-impl <D: Data> AsAny for OutputProxy<D> {
+impl<D: Data> AsAny for OutputProxy<D> {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -79,7 +80,7 @@ impl<D: Data> MultiScopeOutputProxy<D> {
     }
 }
 
-impl <D: Data> AsAny for MultiScopeOutputProxy<D> {
+impl<D: Data> AsAny for MultiScopeOutputProxy<D> {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
     }
@@ -88,7 +89,6 @@ impl <D: Data> AsAny for MultiScopeOutputProxy<D> {
         self
     }
 }
-
 
 impl<D: Data> Output for MultiScopeOutputProxy<D> {
     fn info(&self) -> OutputInfo {

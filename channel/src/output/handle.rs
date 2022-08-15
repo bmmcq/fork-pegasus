@@ -27,14 +27,17 @@ use crate::output::OutputInfo;
 
 pub struct MiniScopeStreamSink<'a, D, T> {
     is_blocked: bool,
-    is_aborted: bool, 
+    is_aborted: bool,
     tag: Tag,
     sink: &'a mut T,
-    _ph: std::marker::PhantomData<D>
+    _ph: std::marker::PhantomData<D>,
 }
 
-impl <'a, D, T> MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + BlockHandle<D> {
-
+impl<'a, D, T> MiniScopeStreamSink<'a, D, T>
+where
+    D: Data,
+    T: StreamPush<D> + BlockHandle<D>,
+{
     fn new(is_aborted: bool, tag: Tag, sink: &'a mut T) -> Self {
         Self { is_blocked: false, is_aborted, tag, sink, _ph: std::marker::PhantomData }
     }
@@ -43,7 +46,7 @@ impl <'a, D, T> MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + 
         if self.is_aborted {
             return Ok(());
         }
-        
+
         assert!(!self.is_blocked, "can't send message after block;");
         match self.sink.push(&self.tag, msg)? {
             Pushed::Finished => Ok(()),
@@ -70,13 +73,13 @@ impl <'a, D, T> MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + 
     }
 
     pub fn give_iterator<I>(&mut self, mut iter: I) -> Result<(), PushError>
-        where
-            I: Iterator<Item = D> + Send + 'static,
+    where
+        I: Iterator<Item = D> + Send + 'static,
     {
         if self.is_aborted {
             return Ok(());
         }
-        
+
         assert!(!self.is_blocked, "can't send message after block;");
         match self.sink.push_iter(&self.tag, &mut iter)? {
             Pushed::Finished => Ok(()),
@@ -92,20 +95,21 @@ impl <'a, D, T> MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + 
     pub fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         self.sink.notify_end(end)
     }
-
 }
 
-impl <'a, D, T>  MiniScopeStreamSink<'a, D, T> where D: Data, T: StreamPush<D> + Pinnable {
+impl<'a, D, T> MiniScopeStreamSink<'a, D, T>
+where
+    D: Data,
+    T: StreamPush<D> + Pinnable,
+{
     pub fn flush(&mut self) -> Result<(), PushError> {
         self.sink.unpin()
     }
 }
 
 pub trait MiniScopeStreamSinkFactory<D, T> {
-
     fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, T>>;
 }
-
 
 pub struct OutputHandle<D, T> {
     #[allow(dead_code)]
@@ -242,7 +246,11 @@ where
     }
 }
 
-impl <D, T> StreamPush<D> for OutputHandle<D, T> where D: Data, T: StreamPush<D> {
+impl<D, T> StreamPush<D> for OutputHandle<D, T>
+where
+    D: Data,
+    T: StreamPush<D>,
+{
     fn push(&mut self, tag: &Tag, msg: D) -> Result<Pushed<D>, PushError> {
         self.output.push(tag, msg)
     }
@@ -251,7 +259,9 @@ impl <D, T> StreamPush<D> for OutputHandle<D, T> where D: Data, T: StreamPush<D>
         self.output.push_last(msg, end)
     }
 
-    fn push_iter<I: Iterator<Item=D>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<D>, PushError> {
+    fn push_iter<I: Iterator<Item = D>>(
+        &mut self, tag: &Tag, iter: &mut I,
+    ) -> Result<Pushed<D>, PushError> {
         self.output.push_iter(tag, iter)
     }
 
@@ -264,11 +274,15 @@ impl <D, T> StreamPush<D> for OutputHandle<D, T> where D: Data, T: StreamPush<D>
     }
 
     fn close(&mut self) -> Result<(), PushError> {
-       self.close()
+        self.close()
     }
 }
 
-impl <D, T> Pinnable for OutputHandle<D, T> where D: Data, T: StreamPush<D> {
+impl<D, T> Pinnable for OutputHandle<D, T>
+where
+    D: Data,
+    T: StreamPush<D>,
+{
     fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         assert!(tag.is_root());
         Ok(true)
@@ -279,7 +293,11 @@ impl <D, T> Pinnable for OutputHandle<D, T> where D: Data, T: StreamPush<D> {
     }
 }
 
-impl <D, T> MiniScopeStreamSinkFactory<D, Self> for OutputHandle<D, T> where D: Data, T: StreamPush<D> {
+impl<D, T> MiniScopeStreamSinkFactory<D, Self> for OutputHandle<D, T>
+where
+    D: Data,
+    T: StreamPush<D>,
+{
     fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, Self>> {
         assert!(tag.is_root());
         Some(MiniScopeStreamSink::new(self.is_aborted, self.out_tag.clone(), self))
@@ -338,9 +356,17 @@ where
     pub fn info(&self) -> OutputInfo {
         self.info
     }
+
+    pub fn block_scope_size(&self) -> usize {
+        self.send_buffer.len()
+    }
 }
 
-impl <D, T> StreamPush<D> for MultiScopeOutputHandle<D, T> where D: Data, T: StreamPush<D> {
+impl<D, T> StreamPush<D> for MultiScopeOutputHandle<D, T>
+where
+    D: Data,
+    T: StreamPush<D>,
+{
     fn push(&mut self, tag: &Tag, msg: D) -> Result<Pushed<D>, PushError> {
         self.output.push(tag, msg)
     }
@@ -349,7 +375,9 @@ impl <D, T> StreamPush<D> for MultiScopeOutputHandle<D, T> where D: Data, T: Str
         self.output.push_last(msg, end)
     }
 
-    fn push_iter<I: Iterator<Item=D>>(&mut self, tag: &Tag, iter: &mut I) -> Result<Pushed<D>, PushError> {
+    fn push_iter<I: Iterator<Item = D>>(
+        &mut self, tag: &Tag, iter: &mut I,
+    ) -> Result<Pushed<D>, PushError> {
         self.output.push_iter(tag, iter)
     }
 
@@ -372,7 +400,8 @@ where
     T: StreamPush<D> + Pinnable,
 {
     fn block_on(&mut self, guard: BlockEntry<D>) {
-        self.send_buffer.insert(guard.get_tag().clone(), guard);
+        self.send_buffer
+            .insert(guard.get_tag().clone(), guard);
     }
 
     fn has_blocks(&self) -> bool {
@@ -454,7 +483,11 @@ where
     }
 }
 
-impl <D, T> Pinnable for MultiScopeOutputHandle<D, T> where D: Data, T: StreamPush<D> + Pinnable + 'static {
+impl<D, T> Pinnable for MultiScopeOutputHandle<D, T>
+where
+    D: Data,
+    T: StreamPush<D> + Pinnable + 'static,
+{
     fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
         self.output.pin(tag)
     }
@@ -465,14 +498,18 @@ impl <D, T> Pinnable for MultiScopeOutputHandle<D, T> where D: Data, T: StreamPu
 }
 
 impl<D, T> MiniScopeStreamSinkFactory<D, Self> for MultiScopeOutputHandle<D, T>
-    where
-        D: Data,
-        T: StreamPush<D> + Pinnable + 'static,
+where
+    D: Data,
+    T: StreamPush<D> + Pinnable + 'static,
 {
     fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, Self>> {
         let push_tag = self.scope_delta.evolve(tag);
         assert!(!self.send_buffer.contains_key(&push_tag));
-        if !self.output.pin(&push_tag).expect("fail to pin, call 'unpin' first;") {
+        if !self
+            .output
+            .pin(&push_tag)
+            .expect("fail to pin, call 'unpin' first;")
+        {
             None
         } else {
             let is_aborted = self.aborts.contains(tag);

@@ -136,7 +136,7 @@ fn main() {
                 Err(e) if e.kind() == std::io::ErrorKind::BrokenPipe => {
                     break;
                 }
-                Err(e) => panic!("get error {:?}", e),
+                Err(e) => panic!("get errors {:?}", e),
             }
         }
         let cost = start.elapsed();

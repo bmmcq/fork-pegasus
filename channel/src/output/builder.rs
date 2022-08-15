@@ -20,7 +20,7 @@ use crate::data::Data;
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
 use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamBufPush;
-use crate::output::{AnyOutput, Output, OutputInfo};
+use crate::output::{AnyOutput, OutputInfo};
 use crate::Port;
 
 pub trait OutputBuilder {
@@ -59,11 +59,9 @@ impl<D: Data> OutputBuilderImpl<D> {
     pub fn add_delta(&mut self, delta: ScopeDelta) -> Option<ScopeDelta> {
         self.delta.add_delta(delta)
     }
-    
+
     pub fn shared(self) -> SharedOutputBuilder<D> {
-        SharedOutputBuilder {
-            inner: Rc::new(RefCell::new(self))
-        }
+        SharedOutputBuilder { inner: Rc::new(RefCell::new(self)) }
     }
 }
 
@@ -93,18 +91,19 @@ impl<D: Data> SharedOutputBuilder<D> {
     }
 }
 
-impl <D: Data> Clone for SharedOutputBuilder<D> {
+impl<D: Data> Clone for SharedOutputBuilder<D> {
     fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone()
-        }
+        Self { inner: self.inner.clone() }
     }
 }
 
 impl<D: Data> OutputBuilder for SharedOutputBuilder<D> {
     fn build(self: Box<Self>) -> Box<dyn AnyOutput> {
         let mut bm = self.inner.borrow_mut();
-        let push = bm.push.take().unwrap_or(EnumStreamBufPush::Null);
+        let push = bm
+            .push
+            .take()
+            .unwrap_or(EnumStreamBufPush::Null);
         let worker_index = self.inner.borrow().worker_index;
         if bm.info.scope_level == 0 {
             Box::new(OutputProxy::new(worker_index, bm.info, bm.delta, push))

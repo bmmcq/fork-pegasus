@@ -61,7 +61,7 @@ mod test {
 
     fn handshake(server_id: u64) {
         let value = get_handshake(server_id, 5);
-        assert_eq!(Some((server_id, 5)), check_handshake(value), "error handshake on {}", server_id);
+        assert_eq!(Some((server_id, 5)), check_handshake(value), "errors handshake on {}", server_id);
     }
 
     #[test]

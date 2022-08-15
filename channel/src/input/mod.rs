@@ -12,10 +12,7 @@ pub struct InputInfo {
 
 impl InputInfo {
     pub fn new(port: Port, scope_level: u8) -> Self {
-        Self {
-            port, 
-            scope_level
-        }
+        Self { port, scope_level }
     }
 }
 

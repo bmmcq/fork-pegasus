@@ -3,7 +3,7 @@ use pegasus_channel::data::{Data, MiniScopeBatch};
 use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
 use pegasus_common::tag::Tag;
 
-use crate::error::JobExecError;
+use crate::errors::JobExecError;
 
 pub struct MiniScopeBatchStream<'a, T> {
     inner: &'a mut MiniScopeBatchQueue<T>,

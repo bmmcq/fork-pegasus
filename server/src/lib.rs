@@ -112,7 +112,7 @@ impl ServerInstance {
                         error!("no receiver {} found for message;", target);
                     } else {
                         if let Err(e) = consumers[target].consume(payload).await {
-                            error!("consume message error: {};", e);
+                            error!("consume message errors: {};", e);
                             break;
                         }
                     }

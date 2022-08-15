@@ -11,12 +11,12 @@ pub enum PullError {
         #[source]
         source: std::io::Error,
     },
-    #[error("io error, caused by {source};")]
+    #[error("io errors, caused by {source};")]
     SystemIO {
         #[from]
         source: std::io::Error,
     },
-    #[error("unknown pull error: {source};")]
+    #[error("unknown pull errors: {source};")]
     Unknown {
         #[from]
         source: anyhow::Error,

@@ -29,27 +29,27 @@ mod push;
 
 #[derive(Error, Debug)]
 pub enum IOErrorKind {
-    #[error("push error {source};")]
+    #[error("push errors {source};")]
     PushErr {
         #[from]
         source: PushError,
     },
-    #[error("pull error {source};")]
+    #[error("pull errors {source};")]
     PullErr {
         #[from]
         source: PullError,
     },
-    #[error("ipc connect error {source};")]
+    #[error("ipc connect errors {source};")]
     ConnectError {
         #[from]
         source: VError,
     },
-    #[error("io error {source};")]
+    #[error("io errors {source};")]
     SystemIO {
         #[from]
         source: std::io::Error,
     },
-    #[error("unknown error {source:?}")]
+    #[error("unknown errors {source:?}")]
     Unknown {
         #[from]
         source: anyhow::Error,
@@ -57,7 +57,7 @@ pub enum IOErrorKind {
 }
 
 #[derive(Error, Debug)]
-#[error("io error : {source} at channel {ch_id:?};")]
+#[error("io errors : {source} at channel {ch_id:?};")]
 pub struct IOError {
     ch_id: Option<ChannelId>,
     #[source]

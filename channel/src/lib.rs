@@ -43,7 +43,7 @@ impl From<(u64, ChannelIndex)> for ChannelId {
     }
 }
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Default)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug, Default)]
 pub struct ChannelInfo {
     pub ch_id: ChannelId,
     pub scope_level: u8,
@@ -59,7 +59,7 @@ impl ChannelInfo {
     pub fn get_input_info(&self) -> InputInfo {
         InputInfo::new(self.target_port, self.scope_level)
     }
-    
+
     pub fn get_output_info(&self) -> OutputInfo {
         OutputInfo { port: self.source_port, scope_level: self.scope_level }
     }
@@ -68,7 +68,7 @@ impl ChannelInfo {
 #[enum_dispatch]
 pub trait Push<T> {
     /// Push message into underlying channel, returns [`Err(IOError)`] if failed;
-    /// Check the error to get more information;
+    /// Check the errors to get more information;
     fn push(&mut self, msg: T) -> Result<(), PushError>;
 
     /// Since some implementation may buffer messages, override this method
@@ -93,7 +93,7 @@ pub trait Pull<T> {
     /// returns [`Ok(None)`].
     ///
     /// Error([`Err(IOError)`]) occurs if the channel is in exception; Check the returned [`IOError`]
-    /// for more details about the error;
+    /// for more details about the errors;
     fn pull_next(&mut self) -> Result<Option<T>, PullError>;
 
     /// Check if there is any message in the channel;

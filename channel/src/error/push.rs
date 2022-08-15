@@ -16,17 +16,17 @@ pub enum PushError {
     WouldBlock(Option<(Tag, Weak<()>)>),
     #[error("data of {0} has been aborted;")]
     Aborted(Tag),
-    #[error("io error, caused by {source}")]
+    #[error("io errors, caused by {source}")]
     SystemIO {
         #[from]
         source: std::io::Error,
     },
-    #[error("push to remote server error: {source}")]
+    #[error("push to remote server errors: {source}")]
     IPCSendErr {
         #[from]
         source: SendError,
     },
-    #[error("unknown push error: {source:?}")]
+    #[error("unknown push errors: {source:?}")]
     Unknown {
         #[from]
         source: anyhow::Error,

@@ -30,7 +30,7 @@ fn main() {
         std::io::stdout().flush().unwrap();
         let read = std::io::stdin()
             .read_line(&mut buf)
-            .expect("read error");
+            .expect("read errors");
         if read > 0 {
             if let Ok(id) = buf
                 .trim_matches(|c| c == ' ' || c == '\t' || c == '\n')

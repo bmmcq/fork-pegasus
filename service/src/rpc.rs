@@ -130,7 +130,7 @@ where
 
         if let Err(e) = pegasus::run_opt(conf, sink, move |worker| service.assemble(&mut payload, worker)) {
             error!("submit job {} failure: {:?}", job_id, e);
-            Err(Status::unknown(format!("submit job error {}", e)))
+            Err(Status::unknown(format!("submit job errors {}", e)))
         } else {
             Ok(Response::new(UnboundedReceiverStream::new(rx)))
         }

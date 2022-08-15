@@ -311,7 +311,7 @@ mod test {
             if let Err(e) = rx.recv() {
                 assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
             } else {
-                panic!("expect broken pipe error;");
+                panic!("expect broken pipe errors;");
             }
         }
 
@@ -334,7 +334,7 @@ mod test {
             if let Err(e) = rx.recv() {
                 assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
             } else {
-                panic!("expect broken pipe error;");
+                panic!("expect broken pipe errors;");
             }
         }
 
@@ -352,7 +352,7 @@ mod test {
             if let Err(e) = rx.recv() {
                 assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
             } else {
-                panic!("expect broken pipe error;");
+                panic!("expect broken pipe errors;");
             }
         }
     }
@@ -421,7 +421,7 @@ mod test {
                 if let Err(e) = rx.recv() {
                     assert_eq!(e.kind(), std::io::ErrorKind::BrokenPipe);
                 } else {
-                    panic!("expect broken pipe error;");
+                    panic!("expect broken pipe errors;");
                 }
             }
         }
@@ -464,13 +464,13 @@ mod test {
         let start = Instant::now();
         loop {
             if let Err(e) = net_rx.recv() {
-                println!("get error {}", e);
+                println!("get errors {}", e);
                 match e {
                     NetError::HBAbnormal(addr) => {
                         assert_eq!(addr, "127.0.0.1:8080".parse().unwrap());
                         break;
                     }
-                    _ => panic!("unexpected error {}", e),
+                    _ => panic!("unexpected errors {}", e),
                 }
             } else {
                 std::thread::sleep(Duration::from_millis(10))

@@ -136,7 +136,7 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
                 if let Some(s) = tmp.get::<usize>(src_index) {
                     let src = s
                         .parse::<u64>()
-                        .expect("error source id format");
+                        .expect("errors source id format");
                     if filter(&src) {
                         // vertices.insert(src, (0, 0));
                         let targets = edges.entry(src).or_insert_with(Vec::new);
@@ -144,17 +144,17 @@ pub fn encode<P: AsRef<Path>, F: Fn(&u64) -> bool>(path: P, filter: F) -> std::i
                             if let Some(d) = tmp.get::<usize>(*i) {
                                 let dst = d
                                     .parse::<u64>()
-                                    .expect("error target id format");
+                                    .expect("errors target id format");
                                 targets.push(dst);
                                 //vertices.insert(dst, (0, 0));
                                 count += 1;
                             } else {
-                                panic!("error format line : {}", e);
+                                panic!("errors format line : {}", e);
                             }
                         }
                     }
                 } else {
-                    panic!("error format line: {}", e);
+                    panic!("errors format line: {}", e);
                 }
             }
             Err(e) => {
@@ -245,7 +245,7 @@ impl NeighborsBackend {
         let size = mmap
             .deref()
             .read_u64::<LittleEndian>()
-            .expect("unknown error;") as usize;
+            .expect("unknown errors;") as usize;
         let len = size / std::mem::size_of::<u64>();
         NeighborsBackend { mmap, len }
     }

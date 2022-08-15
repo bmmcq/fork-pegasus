@@ -40,7 +40,7 @@ impl Display for NetError {
                 if let Some(msg) = msg {
                     write!(f, "invalid config: {}", msg)
                 } else {
-                    write!(f, "invalid config, unknown error;")
+                    write!(f, "invalid config, unknown errors;")
                 }
             }
             NetError::ReadConfigError(e) => {

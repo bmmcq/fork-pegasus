@@ -112,7 +112,7 @@ pub fn await_termination(server_id: u64) {
         debug!("wait {} resources terminate;", resources.len());
         for g in resources.drain(..) {
             if let Err(err) = g.join() {
-                error!("network#wait_termination: found error: {:?};", err);
+                error!("network#wait_termination: found errors: {:?};", err);
             }
         }
     }

@@ -188,11 +188,11 @@ impl ClickHouseStore {
                 let mut result = res.into_inner();
                 if let Some(err) = result.exception.take() {
                     error!(
-                        "error query: code {}, name {}: {}, stack: {}",
+                        "errors query: code {}, name {}: {}, stack: {}",
                         err.code, err.name, err.display_text, err.stack_trace
                     );
                     panic!(
-                        "error query: code {}, name {}: {}, stack: {}",
+                        "errors query: code {}, name {}: {}, stack: {}",
                         err.code, err.name, err.display_text, err.stack_trace
                     );
                 }

@@ -92,7 +92,7 @@ where
                 self.forward.push(item)?;
                 Ok(())
             }
-            Err(e) => Err(anyhow::Error::msg(format!("decode error: {}", e))),
+            Err(e) => Err(anyhow::Error::msg(format!("decode errors: {}", e))),
         }
     }
 

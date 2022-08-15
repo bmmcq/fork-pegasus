@@ -118,10 +118,10 @@ mod test {
         let result = rx.pull_next();
         match result {
             Err(err) => {
-                assert!(err.is_eof(), "unexpected error {:?}", err);
+                assert!(err.is_eof(), "unexpected errors {:?}", err);
             }
             Ok(_) => {
-                panic!("undetected error");
+                panic!("undetected errors");
             }
         }
     }
