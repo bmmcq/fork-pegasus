@@ -14,8 +14,8 @@
 //! limitations under the License.
 
 use pegasus_common::downcast::AsAny;
+use pegasus_common::tag::Tag;
 
-use crate::eos::Eos;
 use crate::error::PushError;
 use crate::Port;
 
@@ -28,9 +28,9 @@ pub struct OutputInfo {
 pub trait Output: Send + 'static {
     fn info(&self) -> OutputInfo;
 
-    fn flush(&self) -> Result<(), PushError>;
+    fn abort(&self, tag: Tag, worker: u16) -> Option<Tag>;
 
-    fn notify_eos(&self, end: Eos) -> Result<(), PushError>;
+    fn flush(&self) -> Result<(), PushError>;
 
     fn close(&self) -> Result<(), PushError>;
 

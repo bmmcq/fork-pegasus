@@ -117,6 +117,7 @@ pub struct OutputHandle<D, T> {
     is_closed: bool,
     is_aborted: bool,
     info: OutputInfo,
+    in_tag: Tag,
     out_tag: Tag,
     scope_delta: MergedScopeDelta,
     send_buffer: Option<BlockEntry<D>>,
@@ -128,12 +129,13 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    pub fn new(worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
+    pub fn new(worker_index: u16, tag: Tag, info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
         assert_eq!(info.scope_level, 0);
-        let tag = delta.evolve(&Tag::Null);
+        let out_tag = delta.evolve(&tag);
         OutputHandle {
             info,
-            out_tag: tag,
+            in_tag: tag,
+            out_tag,
             worker_index,
             is_closed: false,
             is_aborted: false,
@@ -242,7 +244,7 @@ where
         // let eb_tag = self.scope_delta.evolve_back(&abort);
         // assert!(eb_tag.is_root());
         self.is_aborted = true;
-        Some(Tag::Null)
+        Some(self.in_tag.clone())
     }
 }
 

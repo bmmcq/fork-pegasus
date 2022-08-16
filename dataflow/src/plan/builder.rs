@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use pegasus_channel::alloc::ChannelKind;
 use pegasus_channel::data::Data;
+use pegasus_channel::event::emitter::BaseEventEmitter;
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::builder::{OutputBuilderImpl, SharedOutputBuilder};
 use pegasus_channel::output::unify::EnumStreamBufPush;
@@ -50,9 +51,6 @@ impl<D: Data> Stream<D> {
         let unary = UnaryImpl::<D, O, F>::new(func);
         let index = self.builder.operators.borrow().len() as u16;
         let ch_id = self.builder.new_channel_id();
-        let (source_peers, target_peers) = self
-            .builder
-            .get_channel_peer_info(&self.channel);
         let scope_level = self.src.get_scope_level();
 
         let ch_info = ChannelInfo {
@@ -62,8 +60,7 @@ impl<D: Data> Stream<D> {
             batch_capacity: self.batch_capacity,
             source_port: self.src.get_port(),
             target_port: (index, 0).into(),
-            source_peers,
-            target_peers,
+            ch_type: self.channel.get_type(),
         };
 
         let (push, input) = self
@@ -71,10 +68,13 @@ impl<D: Data> Stream<D> {
             .alloc::<D>(self.tag.clone(), ch_info, self.channel)
             .await?;
         self.src.set_push(push);
+        let worker_index = self.builder.worker_index;
         let output =
-            OutputBuilderImpl::<O>::new(self.builder.worker_index, (index, 0).into(), scope_level).shared();
-        let op_builder = UnaryOperatorBuilder::new(input, output.clone(), unary);
-        let info = OperatorInfo::new(name, index as usize, scope_level);
+            OutputBuilderImpl::<O>::new(worker_index, (index, 0).into(), self.tag.clone()).shared();
+        let event_emitter = self.builder.get_event_emitter();
+        let op_builder =
+            UnaryOperatorBuilder::new(worker_index, event_emitter, input, output.clone(), unary);
+        let info = OperatorInfo::new(name, index, scope_level);
         self.builder
             .add_operator(self.op_index, info, op_builder);
 
@@ -141,7 +141,7 @@ impl DataflowBuilder {
         assert!(self.operators.borrow().is_empty());
         let info = OperatorInfo::new("source", 0, 0);
         let output_builder =
-            OutputBuilderImpl::<It::Item>::new(self.worker_index, (0, 0).into(), 0).shared();
+            OutputBuilderImpl::<It::Item>::new(self.worker_index, (0, 0).into(), Tag::Null).shared();
         let op_builder = SourceOperatorBuilder::new(source, Box::new(output_builder.clone()));
         self.operators
             .borrow_mut()
@@ -163,7 +163,7 @@ impl DataflowBuilder {
     {
         let mut operators_br = self.operators.borrow_mut();
         assert!(origin_op_index < operators_br.len());
-        operators_br[origin_op_index].add_dependency(info.index);
+        operators_br[origin_op_index].add_dependency(info.index as usize);
         let mut op_builder = OperatorBuilder::new(info, op);
         op_builder.dependent_on(origin_op_index);
         operators_br.push(op_builder);
@@ -176,25 +176,11 @@ impl DataflowBuilder {
         (self.config.job_id(), *index as u16 - 1).into()
     }
 
-    fn get_channel_peer_info<T>(&self, ch_kind: &ChannelKind<T>) -> (u16, u16)
-    where
-        T: Data,
-    {
-        match ch_kind {
-            ChannelKind::Pipeline => (1, 1),
-            ChannelKind::Exchange(_) => {
-                let peers = self.config.server_config().total_peers();
-                (peers, peers)
-            }
-            ChannelKind::Aggregate => {
-                let peers = self.config.server_config().total_peers();
-                (peers, 1)
-            }
-            ChannelKind::Broadcast => {
-                let peers = self.config.server_config().total_peers();
-                (peers, peers)
-            }
-        }
+    fn get_event_emitter(&self) -> BaseEventEmitter {
+        let ch_br = self.channel_alloc.borrow_mut();
+        ch_br
+            .get_event_emitter(self.worker_index)
+            .clone()
     }
 
     async fn alloc<T>(
@@ -226,7 +212,7 @@ impl DataflowBuilder {
         let event_collector = self
             .channel_alloc
             .borrow_mut()
-            .get_event_collector()
+            .take_event_collector()
             .expect("event collector not found;");
         DataFlowPlan::new(self.index, self.config, event_collector, operators)
     }

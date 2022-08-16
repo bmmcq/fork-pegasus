@@ -16,9 +16,11 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use pegasus_common::tag::Tag;
+
 use crate::data::Data;
 use crate::output::delta::{MergedScopeDelta, ScopeDelta};
-use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
+use crate::output::proxy::OutputProxy;
 use crate::output::unify::EnumStreamBufPush;
 use crate::output::{AnyOutput, OutputInfo};
 use crate::Port;
@@ -30,14 +32,17 @@ pub trait OutputBuilder {
 pub struct OutputBuilderImpl<D: Data> {
     worker_index: u16,
     info: OutputInfo,
+    tag: Tag,
     delta: MergedScopeDelta,
     push: Option<EnumStreamBufPush<D>>,
 }
 
 impl<D: Data> OutputBuilderImpl<D> {
-    pub fn new(worker_index: u16, port: Port, scope_level: u8) -> Self {
+    pub fn new(worker_index: u16, port: Port, tag: Tag) -> Self {
+        let scope_level = tag.len() as u8;
         OutputBuilderImpl {
             worker_index,
+            tag,
             delta: MergedScopeDelta::new(scope_level),
             info: OutputInfo { port, scope_level },
             push: None,
@@ -46,6 +51,10 @@ impl<D: Data> OutputBuilderImpl<D> {
 
     pub fn get_port(&self) -> Port {
         self.info.port
+    }
+
+    pub fn get_inbound_tag(&self) -> &Tag {
+        &self.tag
     }
 
     pub fn get_scope_level(&self) -> u8 {
@@ -105,10 +114,6 @@ impl<D: Data> OutputBuilder for SharedOutputBuilder<D> {
             .take()
             .unwrap_or(EnumStreamBufPush::Null);
         let worker_index = self.inner.borrow().worker_index;
-        if bm.info.scope_level == 0 {
-            Box::new(OutputProxy::new(worker_index, bm.info, bm.delta, push))
-        } else {
-            Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, bm.delta, push))
-        }
+        Box::new(OutputProxy::new(worker_index, bm.tag.clone(), bm.info, bm.delta, push))
     }
 }

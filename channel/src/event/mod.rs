@@ -38,6 +38,10 @@ impl Event {
         Event { from_worker: worker, target_port: target, kind }
     }
 
+    pub fn abort(worker: u16, tag: Tag, target: Port) -> Self {
+        Self::new(worker, target, EventKind::Abort(tag))
+    }
+
     pub fn take_kind(self) -> EventKind {
         self.kind
     }

@@ -2,9 +2,10 @@ use std::any::Any;
 use std::cell::{RefCell, RefMut};
 
 use pegasus_common::downcast::AsAny;
+use pegasus_common::tag::Tag;
 
+use crate::abort::AbortHandle;
 use crate::data::Data;
-use crate::eos::Eos;
 use crate::error::PushError;
 use crate::output::delta::MergedScopeDelta;
 use crate::output::handle::{MultiScopeOutputHandle, OutputHandle};
@@ -16,9 +17,10 @@ pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, Enum
 
 impl<D: Data> OutputProxy<D> {
     pub fn new(
-        worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: EnumStreamBufPush<D>,
+        worker_index: u16, tag: Tag, info: OutputInfo, delta: MergedScopeDelta,
+        output: EnumStreamBufPush<D>,
     ) -> Self {
-        let handle = OutputHandle::new(worker_index, info, delta, output);
+        let handle = OutputHandle::new(worker_index, tag, info, delta, output);
         Self(RefCell::new(handle))
     }
 
@@ -45,12 +47,12 @@ impl<D: Data> Output for OutputProxy<D> {
         self.0.borrow().info()
     }
 
-    fn flush(&self) -> Result<(), PushError> {
-        self.0.borrow_mut().flush()
+    fn abort(&self, tag: Tag, worker: u16) -> Option<Tag> {
+        self.0.borrow_mut().abort(tag, worker)
     }
 
-    fn notify_eos(&self, end: Eos) -> Result<(), PushError> {
-        self.0.borrow_mut().notify_end(end)
+    fn flush(&self) -> Result<(), PushError> {
+        self.0.borrow_mut().flush()
     }
 
     fn close(&self) -> Result<(), PushError> {
@@ -95,12 +97,12 @@ impl<D: Data> Output for MultiScopeOutputProxy<D> {
         self.0.borrow().info()
     }
 
-    fn flush(&self) -> Result<(), PushError> {
-        self.0.borrow_mut().flush()
+    fn abort(&self, tag: Tag, worker: u16) -> Option<Tag> {
+        self.0.borrow_mut().abort(tag, worker)
     }
 
-    fn notify_eos(&self, end: Eos) -> Result<(), PushError> {
-        self.0.borrow_mut().notify_end(end)
+    fn flush(&self) -> Result<(), PushError> {
+        self.0.borrow_mut().flush()
     }
 
     fn close(&self) -> Result<(), PushError> {

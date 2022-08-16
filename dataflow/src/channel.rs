@@ -48,7 +48,12 @@ impl ChannelAllocator {
         }
     }
 
-    pub fn get_event_collector(&mut self) -> Option<BaseEventCollector> {
+    pub fn get_event_emitter(&self, worker_index: u16) -> &BaseEventEmitter {
+        assert!((worker_index as usize) < self.event_emitters.len());
+        &self.event_emitters[worker_index as usize]
+    }
+
+    pub fn take_event_collector(&mut self) -> Option<BaseEventCollector> {
         self.event_collectors.pop_front()
     }
 
@@ -79,7 +84,7 @@ impl ChannelAllocator {
             ChannelKind::Pipeline => {
                 let (push, pull) =
                     pegasus_channel::alloc::alloc_buf_pipeline::<T>(worker_index, tag.clone(), ch_info);
-                let input = Box::new(InputProxy::new(worker_index, tag, ch_info.get_input_info(), pull));
+                let input = Box::new(InputProxy::new(worker_index, tag, ch_info, pull));
                 Ok((push, input))
             }
             ChannelKind::Exchange(router) => {

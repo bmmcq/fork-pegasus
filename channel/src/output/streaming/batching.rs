@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
+use crate::abort::AbortHandle;
 use crate::buffer::pool::{BufferPool, RoBatch, SharedScopedBufferPool, WoBatch};
 use crate::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
 use crate::data::{Data, MiniScopeBatch};
@@ -14,7 +15,7 @@ use crate::{ChannelInfo, Push};
 pub struct BufStreamPush<T, P> {
     #[allow(dead_code)]
     ch_info: ChannelInfo,
-    worker_index: u16,
+    src_index: u16,
     total_send: usize,
     tag: Tag,
     buffer: BoundedBuffer<T>,
@@ -26,7 +27,7 @@ impl<T: Data, P> BufStreamPush<T, P> {
     pub fn new(ch_info: ChannelInfo, worker_index: u16, tag: Tag, push: P) -> Self {
         Self {
             ch_info,
-            worker_index,
+            src_index: worker_index,
             total_send: 0,
             tag,
             buffer: BoundedBuffer::new(ch_info.batch_size, ch_info.batch_capacity),
@@ -40,7 +41,7 @@ impl<T: Data, P> BufStreamPush<T, P> {
     ) -> Self {
         Self {
             ch_info,
-            worker_index,
+            src_index: worker_index,
             total_send: 0,
             tag,
             buffer: BoundedBuffer::with_pool(pool),
@@ -81,7 +82,7 @@ where
         assert_eq!(tag, &self.tag);
         match self.buffer.add(msg) {
             Ok(Some(batch)) => {
-                let batch = MiniScopeBatch::new(tag.clone(), self.worker_index, batch);
+                let batch = MiniScopeBatch::new(tag.clone(), self.src_index, batch);
                 self.inner.push(batch)?;
                 Ok(Pushed::Finished)
             }
@@ -93,7 +94,7 @@ where
     fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(end.tag, self.tag);
         let batch = self.buffer.add_last(msg);
-        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, batch);
+        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.src_index, batch);
         self.total_send += batch.len();
         end.total_send = self.total_send as u64;
         batch.set_end(end);
@@ -106,7 +107,7 @@ where
         assert_eq!(tag, &self.tag);
         let result = self.buffer.drain_to(iter, &mut self.batches);
         for batch in self.batches.drain(..) {
-            let batch = MiniScopeBatch::new(tag.clone(), self.worker_index, batch);
+            let batch = MiniScopeBatch::new(tag.clone(), self.src_index, batch);
             self.total_send += batch.len();
             self.inner.push(batch)?;
         }
@@ -120,11 +121,11 @@ where
     fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
         assert_eq!(end.tag, self.tag);
         let mut batch = if let Some(batch) = self.buffer.exhaust() {
-            let batch = MiniScopeBatch::new(self.tag.clone(), self.worker_index, batch);
+            let batch = MiniScopeBatch::new(self.tag.clone(), self.src_index, batch);
             self.total_send += batch.len();
             batch
         } else {
-            MiniScopeBatch::new(self.tag.clone(), self.worker_index, RoBatch::default())
+            MiniScopeBatch::new(self.tag.clone(), self.src_index, RoBatch::default())
         };
         end.total_send = self.total_send as u64;
         batch.set_end(end);
@@ -134,7 +135,7 @@ where
 
     fn flush(&mut self) -> Result<(), PushError> {
         if let Some(buf) = self.buffer.flush() {
-            let batch = MiniScopeBatch::new(self.tag.clone(), self.worker_index, buf);
+            let batch = MiniScopeBatch::new(self.tag.clone(), self.src_index, buf);
             self.total_send += batch.len();
             self.inner.push(batch)?;
             self.inner.flush()
@@ -148,10 +149,26 @@ where
     }
 }
 
+impl<T, P> AbortHandle for BufStreamPush<T, P>
+where
+    T: Data,
+    P: Push<MiniScopeBatch<T>> + AbortHandle,
+{
+    fn abort(&mut self, tag: Tag, worker_index: u16) -> Option<Tag> {
+        assert_eq!(tag, self.tag);
+        if let Some(tag) = self.inner.abort(tag, worker_index) {
+            let _abort = self.buffer.flush();
+            Some(tag)
+        } else {
+            None
+        }
+    }
+}
+
 pub struct MultiScopeBufStreamPush<T, P> {
+    src_index: u16,
     #[allow(dead_code)]
     ch_info: ChannelInfo,
-    worker_index: u16,
     pinned: Option<(Tag, BufferPtr<T>)>,
     batches: Vec<RoBatch<T>>,
     send_stat: AHashMap<Tag, usize>,
@@ -162,8 +179,8 @@ pub struct MultiScopeBufStreamPush<T, P> {
 impl<T, P> MultiScopeBufStreamPush<T, P> {
     pub fn new(ch_info: ChannelInfo, worker_index: u16, scope_buf_slots: u16, inner: P) -> Self {
         Self {
+            src_index: worker_index,
             ch_info,
-            worker_index,
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
@@ -176,8 +193,8 @@ impl<T, P> MultiScopeBufStreamPush<T, P> {
         ch_info: ChannelInfo, worker_index: u16, pool: Arc<SharedScopedBufferPool<T>>, inner: P,
     ) -> Self {
         Self {
+            src_index: worker_index,
             ch_info,
-            worker_index,
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
@@ -233,7 +250,7 @@ where
     fn flush_pin(&mut self) -> Result<(), PushError> {
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if let Some(buf) = buffer.flush() {
-                let batch = MiniScopeBatch::new(pin.clone(), self.worker_index, buf);
+                let batch = MiniScopeBatch::new(pin.clone(), self.src_index, buf);
                 *self.send_stat.entry(pin).or_insert(0) += batch.len();
                 self.inner.push(batch)?;
             }
@@ -254,7 +271,7 @@ where
                 return Ok(true);
             } else {
                 if let Some(buf) = buffer.flush() {
-                    let batch = MiniScopeBatch::new(pin.clone(), self.worker_index, buf);
+                    let batch = MiniScopeBatch::new(pin.clone(), self.src_index, buf);
                     *self.send_stat.entry(pin).or_insert(0) += batch.len();
                     self.inner.push(batch)?;
                 }
@@ -272,7 +289,7 @@ where
     fn unpin(&mut self) -> Result<(), PushError> {
         if let Some((pin, mut buffer)) = self.pinned.take() {
             if let Some(buf) = buffer.flush() {
-                let batch = MiniScopeBatch::new(pin.clone(), self.worker_index, buf);
+                let batch = MiniScopeBatch::new(pin.clone(), self.src_index, buf);
                 *self.send_stat.entry(pin).or_insert(0) += batch.len();
                 self.inner.push(batch)?;
             }
@@ -290,7 +307,7 @@ where
         if let Some(mut buffer) = self.get_or_create_buffer(tag)? {
             match buffer.add(msg) {
                 Ok(Some(buf)) => {
-                    let batch = MiniScopeBatch::new(tag.clone(), self.worker_index, buf);
+                    let batch = MiniScopeBatch::new(tag.clone(), self.src_index, buf);
                     *self.send_stat.entry(tag.clone()).or_insert(0) += batch.len();
                     self.inner.push(batch)?;
                     Ok(Pushed::Finished)
@@ -321,7 +338,7 @@ where
         // if this tag is pin, `self.pinned` should be take to none as it is last;
         // self.pinned.take();
 
-        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, last);
+        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.src_index, last);
         let mut total_send = self.send_stat.remove(&end.tag).unwrap_or(0);
         total_send += batch.len();
         end.total_send = total_send as u64;
@@ -337,7 +354,7 @@ where
             if !self.batches.is_empty() {
                 let cnt = self.send_stat.entry(tag.clone()).or_default();
                 for b in self.batches.drain(..) {
-                    let batch = MiniScopeBatch::new(tag.clone(), self.worker_index, b);
+                    let batch = MiniScopeBatch::new(tag.clone(), self.src_index, b);
                     *cnt += batch.len();
                     self.inner.push(batch)?;
                 }
@@ -364,7 +381,7 @@ where
             .map(|b| b.finalize())
             .unwrap_or_else(RoBatch::default);
 
-        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.worker_index, last);
+        let mut batch = MiniScopeBatch::new(end.tag.clone(), self.src_index, last);
         let mut total_send = self
             .send_stat
             .remove(&end.tag)
@@ -380,7 +397,7 @@ where
         self.pinned.take();
         for (tag, buffer) in self.scope_buffers.get_all_mut() {
             if let Some(b) = buffer.flush() {
-                let batch = MiniScopeBatch::new(tag.clone(), self.worker_index, b);
+                let batch = MiniScopeBatch::new(tag.clone(), self.src_index, b);
                 self.inner.push(batch)?;
             }
         }
@@ -390,5 +407,26 @@ where
     fn close(&mut self) -> Result<(), PushError> {
         self.scope_buffers.destroy();
         self.inner.close()
+    }
+}
+
+impl<T, P> AbortHandle for MultiScopeBufStreamPush<T, P>
+where
+    T: Data,
+    P: Push<MiniScopeBatch<T>> + AbortHandle,
+{
+    fn abort(&mut self, tag: Tag, worker_index: u16) -> Option<Tag> {
+        let tag = self.inner.abort(tag, worker_index)?;
+        if let Some((pin, buffer)) = self.pinned.take() {
+            if pin != tag {
+                self.pinned = Some((pin, buffer));
+            }
+        }
+
+        let _abort = self
+            .scope_buffers
+            .release(&tag)
+            .map(|b| b.finalize());
+        Some(tag)
     }
 }

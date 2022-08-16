@@ -14,8 +14,8 @@ pub enum PushError {
     EncodeError,
     #[error("push would block;")]
     WouldBlock(Option<(Tag, Weak<()>)>),
-    #[error("data of {0} has been aborted;")]
-    Aborted(Tag),
+    // #[error("data of {0} has been aborted;")]
+    // Aborted(Tag),
     #[error("io errors, caused by {source}")]
     SystemIO {
         #[from]
@@ -38,7 +38,7 @@ impl PushError {
         matches!(self, PushError::WouldBlock(_))
     }
 
-    pub fn is_abort(&self) -> bool {
-        matches!(self, PushError::Aborted(_))
-    }
+    // pub fn is_abort(&self) -> bool {
+    //     matches!(self, PushError::Aborted(_))
+    // }
 }

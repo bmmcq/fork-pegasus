@@ -1,10 +1,12 @@
 use pegasus_channel::base::BasePull;
 use pegasus_channel::data::MiniScopeBatch;
+use pegasus_channel::event::{Event, EventKind};
 use pegasus_channel::input::handle::{InputHandle, MultiScopeInputHandle};
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::handle::{MiniScopeStreamSink, MultiScopeOutputHandle, OutputHandle};
 use pegasus_channel::output::unify::EnumStreamBufPush;
 use pegasus_channel::output::AnyOutput;
+use pegasus_common::tag::Tag;
 use smallvec::SmallVec;
 
 use crate::errors::JobExecError;
@@ -19,7 +21,7 @@ pub type MultiScopeStreamSink<'a, T> = MiniScopeStreamSink<'a, T, MultiScopeOutp
 #[derive(Clone, Debug)]
 pub struct OperatorInfo {
     pub name: String,
-    pub index: usize,
+    pub index: u16,
     pub scope_level: u8,
     pub is_multi_scope: bool,
 }
@@ -31,7 +33,7 @@ impl std::fmt::Display for OperatorInfo {
 }
 
 impl OperatorInfo {
-    pub fn new(name: &str, index: usize, scope_level: u8) -> Self {
+    pub fn new(name: &str, index: u16, scope_level: u8) -> Self {
         OperatorInfo { name: name.to_owned(), index, scope_level, is_multi_scope: false }
     }
 }
@@ -48,6 +50,8 @@ pub trait Operator: Send + 'static {
     fn outputs(&self) -> &[Box<dyn AnyOutput>];
 
     fn fire(&mut self) -> Result<State, JobExecError>;
+
+    fn abort(&mut self, output_port: u8, tag: Tag) -> Result<(), JobExecError>;
 
     fn close(&mut self);
 }
@@ -81,6 +85,35 @@ impl OperatorFlow {
         self.dependencies.as_slice()
     }
 
+    pub fn accept_event(&mut self, event: Event) -> Result<(), JobExecError> {
+        assert_eq!(event.target_port.index, self.info.index);
+        let src = event.from_worker;
+        let to_port = event.target_port;
+        match event.take_kind() {
+            EventKind::Eos(end) => {
+                let offset = to_port.port as usize;
+                if let Some(ref op) = self.core {
+                    let inputs = op.inputs();
+                    assert!(offset < inputs.len());
+                    inputs[offset].notify_eos(src, end)?;
+                } else {
+                    panic!("accept event after operator finished;");
+                }
+            }
+            EventKind::Abort(tag) => {
+                let offset = to_port.port as usize;
+                if let Some(ref mut op) = self.core {
+                    let outputs = op.outputs();
+                    assert!(offset < outputs.len());
+                    if let Some(tag) = outputs[offset].abort(tag, src) {
+                        op.abort(to_port.port, tag)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn fire(&mut self) -> Result<State, JobExecError> {
         if let Some(mut op) = self.core.take() {
             let state = op.fire()?;
@@ -92,6 +125,7 @@ impl OperatorFlow {
             }
             Ok(state)
         } else {
+            assert!(self.is_finished);
             Ok(State::Finished)
         }
     }

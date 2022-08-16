@@ -44,12 +44,6 @@ where
                                 if let Some(b) = source.check_data_block() {
                                     self.inner.block(b);
                                     break;
-                                } else if let Some(tag) = source.check_data_abort() {
-                                    assert_eq!(&tag, self.inner.tag());
-                                    if !is_last {
-                                        self.inner.abort();
-                                        continue;
-                                    }
                                 } else {
                                     return Err(JobExecError::Inner { source });
                                 }

@@ -1,6 +1,5 @@
 use pegasus_channel::block::BlockGuard;
 use pegasus_channel::error::{IOError, IOErrorKind, PullError, PushError};
-use pegasus_common::tag::Tag;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -26,18 +25,18 @@ impl InnerError {
         }
     }
 
-    pub fn check_data_abort(&mut self) -> Option<Tag> {
-        match self {
-            InnerError::IO { source } => match source.cause() {
-                IOErrorKind::PushErr { source } => match source {
-                    PushError::Aborted(tag) => Some(tag.clone()),
-                    _ => None,
-                },
-                _ => None,
-            },
-            //_ => None
-        }
-    }
+    // pub fn check_data_abort(&mut self) -> Option<Tag> {
+    //     match self {
+    //         InnerError::IO { source } => match source.cause() {
+    //             IOErrorKind::PushErr { source } => match source {
+    //                 PushError::Aborted(tag) => Some(tag.clone()),
+    //                 _ => None,
+    //             },
+    //             _ => None,
+    //         },
+    //         //_ => None
+    //     }
+    // }
 }
 
 #[derive(Error, Debug)]

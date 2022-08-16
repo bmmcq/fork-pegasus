@@ -10,9 +10,8 @@ use smallvec::SmallVec;
 
 use crate::block::BlockGuard;
 use crate::data::{Data, MiniScopeBatch};
-use crate::eos::Eos;
-use crate::input::InputInfo;
-use crate::{Pull, PullError};
+use crate::eos::{Eos, PeerSet};
+use crate::{ChannelInfo, Pull, PullError};
 
 pub enum PopEntry<T> {
     End,
@@ -92,6 +91,10 @@ impl<T> MiniScopeBatchQueue<T> {
         }
     }
 
+    pub fn is_abort(&self) -> bool {
+        self.is_abort
+    }
+
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.queue.is_empty()
@@ -154,25 +157,27 @@ pub trait MiniScopeBatchInput<'a, T: Data> {
 pub struct InputHandle<T, P> {
     is_exhaust: bool,
     worker_index: u16,
-    info: InputInfo,
+    info: ChannelInfo,
     tag: Tag,
+    eos_in_merging: Eos,
     outstanding: MiniScopeBatchQueue<T>,
     input: P,
 }
 
 impl<T, P> InputHandle<T, P> {
-    pub fn new(worker_index: u16, tag: Tag, info: InputInfo, input: P) -> Self {
+    pub fn new(worker_index: u16, tag: Tag, info: ChannelInfo, input: P) -> Self {
         Self {
             is_exhaust: false,
             worker_index,
             info,
+            eos_in_merging: Eos::new(tag.clone(), PeerSet::empty(), 0, 0),
             outstanding: MiniScopeBatchQueue::new(tag.clone()),
             tag,
             input,
         }
     }
 
-    pub fn info(&self) -> InputInfo {
+    pub fn info(&self) -> ChannelInfo {
         self.info
     }
 }
@@ -199,7 +204,10 @@ where
                 Ok(None) => break,
                 Err(err) => {
                     if err.is_eof() {
-                        debug!("worker[{}]: input[{}] is exhausted; ", self.worker_index, self.info.port);
+                        debug!(
+                            "worker[{}]: input[{}] is exhausted; ",
+                            self.worker_index, self.info.target_port
+                        );
                         self.is_exhaust = true;
                         break;
                     } else {
@@ -211,16 +219,29 @@ where
         Ok(!self.outstanding.is_empty())
     }
 
+    pub fn abort(&mut self, tag: &Tag) {
+        if tag == &self.tag {
+            self.outstanding.abort();
+        }
+    }
+
     pub fn streams(&mut self) -> Once<&mut MiniScopeBatchQueue<T>> {
         std::iter::once(&mut self.outstanding)
     }
 
-    pub fn notify_eos(&mut self, eos: Eos) -> Result<(), PullError> {
+    pub fn notify_eos(&mut self, src: u16, eos: Eos) -> Result<(), PullError> {
         assert_eq!(self.tag, eos.tag);
         assert!(!self.is_exhaust);
+        self.eos_in_merging.merge(&eos);
+        self.eos_in_merging
+            .parent_peers_mut()
+            .add_peer(src);
+        if self.eos_in_merging.parent_peers() == eos.parent_peers() {
+            self.check_ready()?;
+            self.outstanding
+                .set_end(self.eos_in_merging.clone());
+        }
 
-        self.check_ready()?;
-        self.outstanding.set_end(eos);
         Ok(())
     }
 
@@ -244,17 +265,25 @@ where
 pub struct MultiScopeInputHandle<T, P> {
     is_exhaust: bool,
     worker_index: u16,
-    info: InputInfo,
+    info: ChannelInfo,
+    eos_in_merging: AHashMap<Tag, Eos>,
     outstanding: AHashMap<Tag, MiniScopeBatchQueue<T>>,
     input: P,
 }
 
 impl<T, P> MultiScopeInputHandle<T, P> {
-    pub fn new(worker_index: u16, info: InputInfo, input: P) -> Self {
-        Self { is_exhaust: false, worker_index, info, outstanding: AHashMap::new(), input }
+    pub fn new(worker_index: u16, info: ChannelInfo, input: P) -> Self {
+        Self {
+            is_exhaust: false,
+            worker_index,
+            info,
+            eos_in_merging: AHashMap::new(),
+            outstanding: AHashMap::new(),
+            input,
+        }
     }
 
-    pub fn info(&self) -> InputInfo {
+    pub fn info(&self) -> ChannelInfo {
         self.info
     }
 }
@@ -276,18 +305,36 @@ where
         Streams::new(self.outstanding.values_mut())
     }
 
-    pub fn notify_eos(&mut self, eos: Eos) -> Result<(), PullError> {
-        assert_eq!(self.info.scope_level as usize, eos.tag.len());
-        self.load()?;
+    pub fn abort(&mut self, tag: &Tag) {
+        self.outstanding
+            .entry(tag.clone())
+            .or_insert_with(|| MiniScopeBatchQueue::new(tag.clone()))
+            .abort();
+    }
 
-        if let Some(stream) = self.outstanding.get_mut(&eos.tag) {
-            stream.set_end(eos);
+    pub fn notify_eos(&mut self, src: u16, eos: Eos) -> Result<(), PullError> {
+        let tag = eos.tag.clone();
+        assert_eq!(self.info.scope_level as usize, tag.len());
+        let mut merging = self
+            .eos_in_merging
+            .remove(&tag)
+            .unwrap_or_else(|| Eos::empty(tag.clone()));
+        merging.merge(&eos);
+        merging.parent_peers_mut().add_peer(src);
+        if merging.parent_peers() == eos.parent_peers() {
+            self.load()?;
+            if let Some(stream) = self.outstanding.get_mut(&eos.tag) {
+                stream.set_end(eos);
+            } else {
+                let mut stream = self.new_stream(eos.tag.clone());
+                stream.set_end(eos);
+                self.outstanding
+                    .insert(stream.tag.clone(), stream);
+            }
         } else {
-            let mut stream = self.new_stream(eos.tag.clone());
-            stream.set_end(eos);
-            self.outstanding
-                .insert(stream.tag.clone(), stream);
+            self.eos_in_merging.insert(tag, merging);
         }
+
         Ok(())
     }
 
@@ -313,7 +360,10 @@ where
                 }
                 Err(e) => {
                     if e.is_eof() {
-                        debug!("worker[{}]: input[{}] is exhausted; ", self.worker_index, self.info.port);
+                        debug!(
+                            "worker[{}]: input[{}] is exhausted; ",
+                            self.worker_index, self.info.target_port
+                        );
                         self.is_exhaust = true;
                         break;
                     } else {
@@ -336,9 +386,10 @@ where
 
         if let Some(f) = find {
             if let Some(mut idle) = self.outstanding.remove(&f) {
-                idle.abort();
+                idle.queue.clear();
                 idle.tag = tag;
                 idle.is_exhaust = false;
+                idle.is_abort = false;
                 idle
             } else {
                 unreachable!("unexpected find result;");

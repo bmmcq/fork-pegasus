@@ -16,8 +16,9 @@ pub struct DataFlowPlan {
 }
 
 impl DataFlowPlan {
-    pub fn new(index: u16,
-        config: Arc<JobConfig>, event_collector: BaseEventCollector, operators: Vec<OperatorFlow>,
+    pub fn new(
+        index: u16, config: Arc<JobConfig>, event_collector: BaseEventCollector,
+        operators: Vec<OperatorFlow>,
     ) -> Self {
         Self { index, config, event_collector, operators }
     }

@@ -9,7 +9,8 @@ use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
 use crate::error::PullError;
 use crate::input::handle::{InputHandle, MultiScopeInputHandle};
-use crate::input::{AnyInput, Input, InputInfo};
+use crate::input::{AnyInput, Input};
+use crate::ChannelInfo;
 
 pub struct InputProxy<T: Data>(RefCell<InputHandle<T, BasePull<MiniScopeBatch<T>>>>);
 pub struct MultiScopeInputProxy<T: Data>(RefCell<MultiScopeInputHandle<T, BasePull<MiniScopeBatch<T>>>>);
@@ -18,7 +19,7 @@ impl<T> InputProxy<T>
 where
     T: Data,
 {
-    pub fn new(worker_index: u16, tag: Tag, info: InputInfo, input: BasePull<MiniScopeBatch<T>>) -> Self {
+    pub fn new(worker_index: u16, tag: Tag, info: ChannelInfo, input: BasePull<MiniScopeBatch<T>>) -> Self {
         Self(RefCell::new(InputHandle::new(worker_index, tag, info, input)))
     }
 
@@ -49,7 +50,7 @@ impl<T> Input for InputProxy<T>
 where
     T: Data,
 {
-    fn info(&self) -> InputInfo {
+    fn info(&self) -> ChannelInfo {
         self.0.borrow().info()
     }
 
@@ -57,8 +58,12 @@ where
         self.0.borrow_mut().check_ready()
     }
 
-    fn notify_eos(&self, eos: Eos) -> Result<(), PullError> {
-        self.0.borrow_mut().notify_eos(eos)
+    fn abort(&self, tag: &Tag) {
+        self.0.borrow_mut().abort(tag)
+    }
+
+    fn notify_eos(&self, src: u16, eos: Eos) -> Result<(), PullError> {
+        self.0.borrow_mut().notify_eos(src, eos)
     }
 
     fn is_exhaust(&self) -> bool {
@@ -70,7 +75,7 @@ impl<T> MultiScopeInputProxy<T>
 where
     T: Data,
 {
-    pub fn new(worker_index: u16, info: InputInfo, input: BasePull<MiniScopeBatch<T>>) -> Self {
+    pub fn new(worker_index: u16, info: ChannelInfo, input: BasePull<MiniScopeBatch<T>>) -> Self {
         Self(RefCell::new(MultiScopeInputHandle::new(worker_index, info, input)))
     }
 
@@ -88,7 +93,7 @@ impl<T> Input for MultiScopeInputProxy<T>
 where
     T: Data,
 {
-    fn info(&self) -> InputInfo {
+    fn info(&self) -> ChannelInfo {
         self.0.borrow().info()
     }
 
@@ -96,8 +101,12 @@ where
         self.0.borrow_mut().check_ready()
     }
 
-    fn notify_eos(&self, eos: Eos) -> Result<(), PullError> {
-        self.0.borrow_mut().notify_eos(eos)
+    fn abort(&self, tag: &Tag) {
+        self.0.borrow_mut().abort(tag)
+    }
+
+    fn notify_eos(&self, src: u16, eos: Eos) -> Result<(), PullError> {
+        self.0.borrow_mut().notify_eos(src, eos)
     }
 
     fn is_exhaust(&self) -> bool {

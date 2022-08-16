@@ -1,5 +1,8 @@
+use ahash::AHashMap;
+use nohash_hasher::IntSet;
 use pegasus_common::tag::Tag;
 
+use crate::abort::AbortHandle;
 use crate::data::Data;
 use crate::eos::Eos;
 use crate::error::PushError;
@@ -79,6 +82,7 @@ pub struct PartitionStreamPush<T, P> {
     pub worker_index: u16,
     pushes: Vec<P>,
     route: Partitioner<T>,
+    aborting: AHashMap<Tag, IntSet<u16>>,
 }
 
 impl<T, P> PartitionStreamPush<T, P> {
@@ -87,7 +91,15 @@ impl<T, P> PartitionStreamPush<T, P> {
         PR: PartitionRoute<Item = T> + Send + 'static,
     {
         let route = Partitioner::new(pushes.len(), router);
-        Self { ch_info, worker_index, pushes, route }
+        Self { ch_info, worker_index, pushes, route, aborting: AHashMap::new() }
+    }
+
+    #[inline]
+    fn is_aborted(&self, tag: &Tag, target: u16) -> bool {
+        self.aborting
+            .get(tag)
+            .map(|set| set.contains(&target))
+            .unwrap_or(false)
     }
 }
 
@@ -121,7 +133,11 @@ where
     fn push(&mut self, tag: &Tag, msg: T) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
         let target = self.route.get_partition(&msg);
-        self.pushes[target].push(tag, msg)
+        if !self.is_aborted(tag, target as u16) {
+            self.pushes[target].push(tag, msg)
+        } else {
+            Ok(Pushed::Finished)
+        }
     }
 
     fn push_last(&mut self, msg: T, mut end: Eos) -> Result<(), PushError> {
@@ -141,24 +157,40 @@ where
                 p.notify_end(end.clone())?;
             }
         }
-        self.pushes[target].push_last(msg, end)
+
+        if self.is_aborted(&end.tag, target as u16) {
+            self.pushes[target].notify_end(end)
+        } else {
+            self.pushes[target].push_last(msg, end)
+        }
     }
 
     fn push_iter<I: Iterator<Item = T>>(
         &mut self, tag: &Tag, iter: &mut I,
     ) -> Result<Pushed<T>, PushError> {
         assert_eq!(tag.len(), self.ch_info.scope_level as usize);
+        let mut aborted = Vec::with_capacity(self.pushes.len());
+        let aborting = self.aborting.get(tag);
 
-        for p in self.pushes.iter_mut() {
-            if !p.pin(tag)? {
+        for (i, p) in self.pushes.iter_mut().enumerate() {
+            if aborting
+                .map(|set| set.contains(&(i as u16)))
+                .unwrap_or(false)
+            {
+                aborted.push(true);
+            } else if !p.pin(tag)? {
                 return Ok(Pushed::WouldBlock(None));
+            } else {
+                aborted.push(false);
             }
         }
 
         while let Some(item) = iter.next() {
             let target = self.route.get_partition(&item);
-            if let Pushed::WouldBlock(v) = self.pushes[target].push(tag, item)? {
-                return Ok(Pushed::WouldBlock(v));
+            if !aborted[target] {
+                if let Pushed::WouldBlock(v) = self.pushes[target].push(tag, item)? {
+                    return Ok(Pushed::WouldBlock(v));
+                }
             }
         }
         Ok(Pushed::Finished)
@@ -170,6 +202,8 @@ where
 
         eos.total_send = 0;
         eos.global_total_send = 0;
+
+        self.aborting.remove(&eos.tag);
 
         for (i, p) in self.pushes.iter().enumerate() {
             let count = p.count_pushed(&eos.tag);
@@ -194,5 +228,25 @@ where
             p.close()?;
         }
         Ok(())
+    }
+}
+
+impl<T, P> AbortHandle for PartitionStreamPush<T, P>
+where
+    T: Data,
+    P: StreamPush<T> + AbortHandle,
+{
+    fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
+        let tag = self.pushes[worker as usize].abort(tag, worker)?;
+        let set = self
+            .aborting
+            .entry(tag.clone())
+            .or_insert_with(IntSet::default);
+        set.insert(worker);
+        if set.len() == self.pushes.len() {
+            Some(tag)
+        } else {
+            None
+        }
     }
 }

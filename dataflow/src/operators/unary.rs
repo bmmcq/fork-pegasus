@@ -2,6 +2,8 @@ use std::any::Any;
 
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
+use pegasus_channel::event::emitter::BaseEventEmitter;
+use pegasus_channel::event::Event;
 use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
 use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
 use pegasus_channel::input::AnyInput;
@@ -10,17 +12,20 @@ use pegasus_channel::output::handle::{MiniScopeStreamSink, MiniScopeStreamSinkFa
 use pegasus_channel::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use pegasus_channel::output::streaming::{Pinnable, StreamPush};
 use pegasus_channel::output::AnyOutput;
+use pegasus_channel::ChannelType;
 use pegasus_common::downcast::AsAny;
+use pegasus_common::tag::Tag;
 
 use super::{MultiScopeOutput, Operator};
 use crate::errors::JobExecError;
 use crate::operators::builder::Builder;
 use crate::operators::consume::MiniScopeBatchStream;
-use crate::operators::{State, Output};
+use crate::operators::{Output, State};
 
 pub trait UnaryFunction: Send + 'static {
     fn on_fire(
-        &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        event_emitter: &mut BaseEventEmitter,
     ) -> Result<State, JobExecError>;
 }
 
@@ -66,9 +71,6 @@ where
                 Err(JobExecError::Inner { mut source }) => {
                     if let Some(b) = source.check_data_block() {
                         src_ext.block(b);
-                    } else if let Some(tag) = source.check_data_abort() {
-                        assert_eq!(&tag, src_ext.tag());
-                        src_ext.abort();
                     } else {
                         return Err(JobExecError::Inner { source });
                     }
@@ -113,7 +115,8 @@ where
         + 'static,
 {
     fn on_fire(
-        &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        event_emitter: &mut BaseEventEmitter,
     ) -> Result<State, JobExecError> {
         let mut output_proxy = OutputProxy::<O>::downcast(output).expect("output type cast fail;");
 
@@ -125,12 +128,27 @@ where
         }
 
         let mut input_proxy = InputProxy::<I>::downcast(input).expect("input type cast fail;");
+        let port = input_proxy.info().source_port;
+        let ch_type = input_proxy.info().ch_type;
         if input_proxy.check_ready()? {
             let mut once = input_proxy.streams();
             let stream = once
                 .next()
                 .expect("should be as least one stream;");
+
             unary_consume(stream, &mut *output_proxy, &mut self.func)?;
+
+            if stream.is_abort() && !stream.is_exhaust() {
+                let abort_event = Event::abort(worker_index, stream.tag().clone(), port);
+                match ch_type {
+                    ChannelType::SPSC => {
+                        event_emitter.send(worker_index, abort_event)?;
+                    }
+                    ChannelType::MPSC | ChannelType::MPMC => {
+                        event_emitter.broadcast(abort_event)?;
+                    }
+                }
+            }
         }
 
         if output_proxy.has_blocks() {
@@ -155,7 +173,8 @@ where
         + 'static,
 {
     fn on_fire(
-        &mut self, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
+        event_emitter: &mut BaseEventEmitter,
     ) -> Result<State, JobExecError> {
         let mut input_proxy = MultiScopeInputProxy::<I>::downcast(input).expect("input type cast fail;");
         let mut output_proxy =
@@ -166,8 +185,22 @@ where
         }
 
         if input_proxy.check_ready()? {
+            let port = input_proxy.info().source_port;
+            let ch_type = input_proxy.info().ch_type;
             for stream in input_proxy.streams() {
                 unary_consume(stream, &mut *output_proxy, &mut self.func)?;
+
+                if stream.is_abort() && !stream.is_exhaust() {
+                    let abort_event = Event::abort(worker_index, stream.tag().clone(), port);
+                    match ch_type {
+                        ChannelType::SPSC => {
+                            event_emitter.send(worker_index, abort_event)?;
+                        }
+                        ChannelType::MPSC | ChannelType::MPMC => {
+                            event_emitter.broadcast(abort_event)?;
+                        }
+                    }
+                }
             }
         }
 
@@ -182,14 +215,19 @@ where
 }
 
 pub struct UnaryOperator<F> {
+    worker_index: u16,
+    event_emitter: BaseEventEmitter,
     input: [Box<dyn AnyInput>; 1],
     output: [Box<dyn AnyOutput>; 1],
     func: F,
 }
 
 impl<F> UnaryOperator<F> {
-    pub fn new(input: Box<dyn AnyInput>, output: Box<dyn AnyOutput>, func: F) -> Self {
-        Self { input: [input], output: [output], func }
+    pub fn new(
+        worker_index: u16, event_emitter: BaseEventEmitter, input: Box<dyn AnyInput>,
+        output: Box<dyn AnyOutput>, func: F,
+    ) -> Self {
+        Self { worker_index, event_emitter, input: [input], output: [output], func }
     }
 }
 
@@ -207,7 +245,26 @@ where
 
     fn fire(&mut self) -> Result<State, JobExecError> {
         self.func
-            .on_fire(&self.input[0], &self.output[0])
+            .on_fire(self.worker_index, &self.input[0], &self.output[0], &mut self.event_emitter)
+    }
+
+    fn abort(&mut self, output_port: u8, tag: Tag) -> Result<(), JobExecError> {
+        assert_eq!(output_port, 0);
+        self.input[0].abort(&tag);
+
+        let port = self.input[0].info().source_port;
+        let event = Event::abort(self.worker_index, tag, port);
+        match self.input[0].info().ch_type {
+            ChannelType::SPSC => {
+                self.event_emitter
+                    .send(self.worker_index, event)?;
+            }
+            ChannelType::MPSC | ChannelType::MPMC => {
+                self.event_emitter.broadcast(event)?;
+            }
+        }
+
+        Ok(())
     }
 
     fn close(&mut self) {
@@ -218,17 +275,21 @@ where
 }
 
 pub struct UnaryOperatorBuilder<F> {
+    worker_index: u16,
+    event_emitter: BaseEventEmitter,
     input: Box<dyn AnyInput>,
     output: Box<dyn OutputBuilder>,
     func: F,
 }
 
 impl<F> UnaryOperatorBuilder<F> {
-    pub fn new<T>(input: Box<dyn AnyInput>, output: T, func: F) -> Self
+    pub fn new<T>(
+        worker_index: u16, event_emitter: BaseEventEmitter, input: Box<dyn AnyInput>, output: T, func: F,
+    ) -> Self
     where
         T: OutputBuilder + 'static,
     {
-        Self { input, output: Box::new(output), func }
+        Self { worker_index, event_emitter, input, output: Box::new(output), func }
     }
 }
 
@@ -251,6 +312,6 @@ where
 {
     fn build(self: Box<Self>) -> Box<dyn Operator> {
         let output = self.output.build();
-        Box::new(UnaryOperator::new(self.input, output, self.func))
+        Box::new(UnaryOperator::new(self.worker_index, self.event_emitter, self.input, output, self.func))
     }
 }

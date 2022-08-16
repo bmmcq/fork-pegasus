@@ -48,12 +48,14 @@ where
                 .new_session(&Tag::Null)
                 .expect("new session expect not none;");
             match session.give_iterator(extern_data) {
-                Ok(_) => Ok(State::Finished),
+                Ok(_) => {
+                    session.flush()?;
+                    Ok(State::Finished)
+                }
                 Err(err) => {
                     if err.is_would_block() {
+                        session.flush()?;
                         Ok(State::Blocking(1))
-                    } else if err.is_abort() {
-                        Ok(State::Finished)
                     } else {
                         Err(err)?
                     }
@@ -62,6 +64,12 @@ where
         } else {
             Ok(State::Finished)
         }
+    }
+
+    fn abort(&mut self, output_port: u8, tag: Tag) -> Result<(), JobExecError> {
+        assert_eq!(output_port, 0);
+        assert_eq!(tag, Tag::Null);
+        Ok(())
     }
 
     fn close(&mut self) {

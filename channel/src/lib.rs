@@ -6,8 +6,6 @@ extern crate log;
 use std::fmt::{Display, Formatter};
 
 use crate::error::{IOError, PullError, PushError};
-use crate::input::InputInfo;
-use crate::output::OutputInfo;
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq, Default)]
 pub struct Port {
@@ -43,26 +41,25 @@ impl From<(u64, ChannelIndex)> for ChannelId {
     }
 }
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug, Default)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
+pub enum ChannelType {
+    /// Single-Producer-Single-Consumer;
+    SPSC,
+    /// Multi-Producers-Single-Consumer;
+    MPSC,
+    /// Multi-Producers-Multi-Consumers;
+    MPMC,
+}
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct ChannelInfo {
     pub ch_id: ChannelId,
     pub scope_level: u8,
-    pub source_peers: u16,
-    pub target_peers: u16,
+    pub ch_type: ChannelType,
     pub batch_size: u16,
     pub batch_capacity: u16,
     pub source_port: Port,
     pub target_port: Port,
-}
-
-impl ChannelInfo {
-    pub fn get_input_info(&self) -> InputInfo {
-        InputInfo::new(self.target_port, self.scope_level)
-    }
-
-    pub fn get_output_info(&self) -> OutputInfo {
-        OutputInfo { port: self.source_port, scope_level: self.scope_level }
-    }
 }
 
 #[enum_dispatch]

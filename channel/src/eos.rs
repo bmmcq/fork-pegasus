@@ -113,18 +113,18 @@ impl PeerSet {
         }
     }
 
-    pub fn merge(&mut self, other: PeerSet) {
+    pub fn merge(&mut self, other: &PeerSet) {
         match other {
             PeerSet::Empty => {}
-            PeerSet::One(v) => self.add_peer(v),
+            PeerSet::One(v) => self.add_peer(*v),
             PeerSet::Range(f, t) => {
-                for i in f..t {
+                for i in *f..*t {
                     self.add_peer(i);
                 }
             }
             PeerSet::Partial(set) => {
                 for i in set {
-                    self.add_peer(i)
+                    self.add_peer(*i)
                 }
             }
         }
@@ -169,6 +169,16 @@ pub struct Eos {
 }
 
 impl Eos {
+    pub fn empty(tag: Tag) -> Self {
+        Self {
+            tag,
+            total_send: 0,
+            global_total_send: 0,
+            parent_peers: PeerSet::Empty,
+            child_peers: PeerSet::Empty,
+        }
+    }
+
     pub fn new(tag: Tag, parent_peers: PeerSet, total_send: u64, global_total_send: u64) -> Self {
         Eos { tag, total_send, global_total_send, parent_peers, child_peers: PeerSet::empty() }
     }
@@ -180,9 +190,9 @@ impl Eos {
         }
     }
 
-    pub fn merge(&mut self, other: Eos) {
+    pub fn merge(&mut self, other: &Eos) {
         assert_eq!(self.tag, other.tag);
-        self.parent_peers.merge(other.parent_peers);
+        self.child_peers.merge(&other.child_peers);
         self.total_send += other.total_send;
         self.global_total_send += other.global_total_send;
     }
@@ -193,6 +203,10 @@ impl Eos {
 
     pub fn parent_peers(&self) -> &PeerSet {
         &self.parent_peers
+    }
+
+    pub fn parent_peers_mut(&mut self) -> &mut PeerSet {
+        &mut self.parent_peers
     }
 
     pub fn child_peers(&self) -> &PeerSet {

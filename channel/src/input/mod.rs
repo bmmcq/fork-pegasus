@@ -1,27 +1,18 @@
 use pegasus_common::downcast::AsAny;
+use pegasus_common::tag::Tag;
 
 use crate::eos::Eos;
 use crate::error::PullError;
-use crate::Port;
-
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-pub struct InputInfo {
-    scope_level: u8,
-    port: Port,
-}
-
-impl InputInfo {
-    pub fn new(port: Port, scope_level: u8) -> Self {
-        Self { port, scope_level }
-    }
-}
+use crate::ChannelInfo;
 
 pub trait Input: Send + 'static {
-    fn info(&self) -> InputInfo;
+    fn info(&self) -> ChannelInfo;
 
     fn check_ready(&self) -> Result<bool, PullError>;
 
-    fn notify_eos(&self, eos: Eos) -> Result<(), PullError>;
+    fn abort(&self, tag: &Tag);
+
+    fn notify_eos(&self, src: u16, eos: Eos) -> Result<(), PullError>;
 
     fn is_exhaust(&self) -> bool;
 }

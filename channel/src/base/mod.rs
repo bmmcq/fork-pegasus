@@ -1,10 +1,12 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use pegasus_common::config::JobServerConfig;
+use pegasus_common::tag::Tag;
 use pegasus_server::{Decode, ServerInstance};
 
+use crate::abort::AbortHandle;
 pub use crate::base::inter_processes::{Decoder, SimpleDecoder};
-use crate::data::Data;
+use crate::data::{Data, MiniScopeBatch};
 use crate::error::{IOError, PullError, PushError};
 use crate::{ChannelId, Pull, Push};
 
@@ -17,6 +19,12 @@ pub enum BasePush<T: Data> {
     IntraThread(intra_thread::ThreadPush<T>),
     IntraProcess(intra_process::IntraProcessPush<T>),
     InterProcesses(inter_processes::RemotePush<T>),
+}
+
+impl<T: Data> AbortHandle for BasePush<MiniScopeBatch<T>> {
+    fn abort(&mut self, tag: Tag, _worker: u16) -> Option<Tag> {
+        Some(tag)
+    }
 }
 
 #[enum_dispatch(Pull<T>)]
@@ -92,7 +100,7 @@ where
     }
 
     let servers = config.servers().collect::<Vec<_>>();
-    // convert plan channel id to ipc channel id;
+    // convert plan channel id to ipc channel id; TODO: maybe not work;
     let ipc_ch_id = NEXT_IPC_CHANNEL_ID.fetch_add(1, Ordering::SeqCst);
 
     let mut forwards = Vec::with_capacity(local_pushes.len());

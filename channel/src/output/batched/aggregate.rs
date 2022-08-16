@@ -1,3 +1,6 @@
+use pegasus_common::tag::Tag;
+
+use crate::abort::AbortHandle;
 use crate::data::{Data, MiniScopeBatch};
 use crate::error::PushError;
 use crate::output::Rectifier;
@@ -7,7 +10,7 @@ pub struct AggregatePush<T, P> {
     #[allow(dead_code)]
     ch_info: ChannelInfo,
     #[allow(dead_code)]
-    worker_index: u16,
+    src_index: u16,
     target: u16,
     push: P,
     _ph: std::marker::PhantomData<T>,
@@ -33,6 +36,21 @@ where
 
     fn close(&mut self) -> Result<(), PushError> {
         self.push.close()
+    }
+}
+
+impl<T, P> AbortHandle for AggregatePush<T, P>
+where
+    T: Data,
+    P: Push<MiniScopeBatch<T>> + AbortHandle,
+{
+    fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
+        let tag = self.push.abort(tag, worker)?;
+        if worker == self.target {
+            Some(tag)
+        } else {
+            None
+        }
     }
 }
 
@@ -75,5 +93,21 @@ where
             p.close()?;
         }
         Ok(())
+    }
+}
+
+impl<T, P> AbortHandle for AggregateByScopePush<T, P>
+where
+    T: Data,
+    P: Push<MiniScopeBatch<T>> + AbortHandle,
+{
+    fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
+        let target = self.rectifier.get(tag.current_uncheck() as u64);
+        if worker as usize == target {
+            let tag = self.pushes[target].abort(tag, worker)?;
+            Some(tag)
+        } else {
+            None
+        }
     }
 }

@@ -1,6 +1,7 @@
 use pegasus_common::tag::Tag;
 use pegasus_server::Encode;
 
+use crate::abort::AbortHandle;
 use crate::base::{BasePull, BasePush};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
@@ -153,6 +154,21 @@ impl<T: Data> StreamPush<T> for EnumStreamBufPush<T> {
             EnumStreamBufPush::Aggregate(p) => p.close(),
             EnumStreamBufPush::MultiScopeAggregate(p) => p.close(),
             EnumStreamBufPush::AggregateByScope(p) => p.close(),
+        }
+    }
+}
+
+impl<T: Data> AbortHandle for EnumStreamBufPush<T> {
+    fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
+        match self {
+            EnumStreamBufPush::Null => Some(tag),
+            EnumStreamBufPush::Pipeline(p) => p.abort(tag, worker),
+            EnumStreamBufPush::MultiScopePipeline(p) => p.abort(tag, worker),
+            EnumStreamBufPush::Exchange(p) => p.abort(tag, worker),
+            EnumStreamBufPush::MultiScopeExchange(p) => p.abort(tag, worker),
+            EnumStreamBufPush::Aggregate(p) => p.abort(tag, worker),
+            EnumStreamBufPush::MultiScopeAggregate(p) => p.abort(tag, worker),
+            EnumStreamBufPush::AggregateByScope(p) => p.abort(tag, worker),
         }
     }
 }

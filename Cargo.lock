@@ -845,22 +845,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "pegasus_network"
-version = "0.1.0"
-dependencies = [
- "crossbeam-channel",
- "crossbeam-queue",
- "crossbeam-utils 0.8.10",
- "enum_dispatch",
- "lazy_static",
- "log",
- "pegasus_common",
- "serde",
- "structopt",
- "toml",
-]
-
-[[package]]
 name = "pegasus_server"
 version = "1.0.0"
 dependencies = [
@@ -1199,9 +1183,6 @@ name = "serde"
 version = "1.0.137"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61ea8d54c77f8315140a05f4c7237403bf38b72704d031543aa1d16abbf517d1"
-dependencies = [
- "serde_derive",
-]
 
 [[package]]
 name = "serde-value"
@@ -1463,15 +1444,6 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
-]
-
-[[package]]
-name = "toml"
-version = "0.5.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d82e1a7758622a465f8cee077614c73484dac5b836c02ff6a40d5d1010324d7"
-dependencies = [
- "serde",
 ]
 
 [[package]]

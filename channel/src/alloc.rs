@@ -16,7 +16,7 @@ use crate::output::batched::evented::EventEosBatchPush;
 use crate::output::streaming::batching::{BufStreamPush, MultiScopeBufStreamPush};
 use crate::output::streaming::partition::{PartitionRoute, PartitionStreamPush};
 use crate::output::unify::{BaseBatchPull, BuEeBaseBatchPush, EnumStreamBufPush, MsBuEeBaseBatchPush};
-use crate::{ChannelId, ChannelInfo, IOError};
+use crate::{ChannelId, ChannelInfo, ChannelType, IOError};
 
 pub enum ChannelKind<T: Data> {
     Pipeline,
@@ -28,6 +28,15 @@ pub enum ChannelKind<T: Data> {
 impl<T: Data> ChannelKind<T> {
     pub fn is_pipeline(&self) -> bool {
         matches!(self, Self::Pipeline)
+    }
+
+    pub fn get_type(&self) -> ChannelType {
+        match self {
+            ChannelKind::Pipeline => ChannelType::SPSC,
+            ChannelKind::Exchange(_) => ChannelType::MPMC,
+            ChannelKind::Aggregate => ChannelType::MPSC,
+            ChannelKind::Broadcast => ChannelType::MPMC,
+        }
     }
 }
 
@@ -48,8 +57,7 @@ impl<T: Data> Channel<T> {
             router,
             self.pushes,
         ));
-        let pull =
-            Box::new(InputProxy::new(worker_index, self.tag, self.ch_info.get_input_info(), self.pull));
+        let pull = Box::new(InputProxy::new(worker_index, self.tag, self.ch_info, self.pull));
         (push, pull)
     }
 }
@@ -270,8 +278,7 @@ pub async fn alloc_event_channel(
             for _ in 0..peers {
                 decoders.push(SimpleDecoder::new())
             }
-            crate::base::alloc_cluster_exchange(ch_id, config, decoders)
-                .await?
+            crate::base::alloc_cluster_exchange(ch_id, config, decoders).await?
         };
         for (push, pull) in list {
             let push = BaseEventEmitter::new(push);
