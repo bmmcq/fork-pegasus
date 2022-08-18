@@ -41,9 +41,9 @@ where
     }
 
     pub fn multi_scope_pipeline(
-        worker_index: u16, scope_buf_slots: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
+        worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
     ) -> Self {
-        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, scope_buf_slots, push);
+        let push = MultiScopeBufStreamPush::new(ch_info, worker_index, push);
         Self::MultiScopePipeline(push)
     }
 }
@@ -172,3 +172,5 @@ impl<T: Data> AbortHandle for EnumStreamBufPush<T> {
         }
     }
 }
+
+

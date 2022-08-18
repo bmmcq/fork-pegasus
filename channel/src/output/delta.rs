@@ -21,11 +21,11 @@ pub enum ScopeDelta {
     /// The scope won't be changed.
     None,
     /// Go to a next adjacent sibling scope;
-    ToSibling(u32),
+    ToSibling,
     /// Go to child scope;
-    ToChild(u32),
+    ToChild,
     /// Go to parent scope;
-    ToParent(u32),
+    ToParent,
 }
 
 impl Default for ScopeDelta {
@@ -35,145 +35,18 @@ impl Default for ScopeDelta {
 }
 
 impl ScopeDelta {
-    pub fn level_delta(&self) -> i32 {
-        match self {
-            ScopeDelta::None => 0,
-            ScopeDelta::ToSibling(_) => 0,
-            ScopeDelta::ToChild(a) => *a as i32,
-            ScopeDelta::ToParent(a) => 0 - *a as i32,
-        }
-    }
-
-    pub fn try_merge(&mut self, other: ScopeDelta) -> Option<ScopeDelta> {
-        match (*self, other) {
-            (ScopeDelta::None, x) => {
-                *self = x;
-                None
-            }
-            (_, ScopeDelta::None) => None,
-            (ScopeDelta::ToSibling(a), ScopeDelta::ToSibling(b)) => {
-                *self = ScopeDelta::ToSibling(a + b);
-                None
-            }
-            (ScopeDelta::ToSibling(_), other) => Some(other),
-            (ScopeDelta::ToChild(a), ScopeDelta::ToChild(b)) => {
-                *self = ScopeDelta::ToChild(a + b);
-                None
-            }
-            (ScopeDelta::ToChild(_), other) => Some(other),
-            (ScopeDelta::ToParent(a), ScopeDelta::ToParent(b)) => {
-                *self = ScopeDelta::ToParent(a + b);
-                None
-            }
-            (ScopeDelta::ToParent(_), other) => Some(other),
-        }
-    }
-
     pub fn evolve(&self, tag: &Tag) -> Tag {
         match self {
             ScopeDelta::None => tag.clone(),
-            ScopeDelta::ToSibling(d) => {
-                assert!(*d > 0);
-                let mut e = tag.advance();
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = e.advance();
-                    }
-                }
-                e
+            ScopeDelta::ToSibling => {
+               tag.advance()
             }
-            ScopeDelta::ToChild(d) => {
-                assert!(*d > 0);
-                let mut e = Tag::inherit(tag, 0);
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = Tag::inherit(&e, 0);
-                    }
-                }
-                e
+            ScopeDelta::ToChild => {
+                Tag::inherit(tag, 0)
             }
-            ScopeDelta::ToParent(d) => {
-                assert!(*d > 0);
-                let mut e = tag.to_parent_silent();
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = e.to_parent_silent();
-                    }
-                }
-                e
+            ScopeDelta::ToParent => {
+                tag.to_parent_uncheck()
             }
         }
-    }
-
-    pub fn evolve_back(&self, tag: &Tag) -> Tag {
-        match self {
-            ScopeDelta::None => tag.clone(),
-            ScopeDelta::ToSibling(d) => {
-                assert!(*d > 0);
-                let mut e = tag.retreat();
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = e.retreat();
-                    }
-                }
-                e
-            }
-            ScopeDelta::ToChild(d) => {
-                assert!(*d > 0);
-                let mut e = tag.to_parent_silent();
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = e.to_parent_silent();
-                    }
-                }
-                e
-            }
-            ScopeDelta::ToParent(d) => {
-                assert!(*d > 0);
-                let mut e = Tag::inherit(tag, 0);
-                if *d > 1 {
-                    for _ in 1..*d {
-                        e = Tag::inherit(&e, 0);
-                    }
-                }
-                e
-            }
-        }
-    }
-}
-
-#[derive(Default, Copy, Clone)]
-pub struct MergedScopeDelta {
-    pub origin_scope_level: u8,
-    deltas: ScopeDelta,
-}
-
-impl MergedScopeDelta {
-    pub fn new(origin_scope_level: u8) -> Self {
-        MergedScopeDelta { origin_scope_level, deltas: ScopeDelta::None }
-    }
-
-    pub fn output_scope_level(&self) -> u8 {
-        let x = self.origin_scope_level as i32 + self.deltas.level_delta();
-        assert!(x >= 0 && x < u8::MAX as i32);
-        x as u8
-    }
-
-    pub fn scope_level_delta(&self) -> i32 {
-        self.deltas.level_delta()
-    }
-
-    pub fn add_delta(&mut self, delta: ScopeDelta) -> Option<ScopeDelta> {
-        self.deltas.try_merge(delta)
-    }
-
-    #[inline]
-    pub fn evolve(&self, tag: &Tag) -> Tag {
-        self.deltas.evolve(tag)
-    }
-
-    #[inline]
-    pub fn evolve_back(&self, tag: &Tag) -> Tag {
-        self.deltas.evolve_back(tag)
     }
 }

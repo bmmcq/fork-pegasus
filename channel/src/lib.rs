@@ -60,6 +60,7 @@ pub struct ChannelInfo {
     pub batch_capacity: u16,
     pub source_port: Port,
     pub target_port: Port,
+    pub max_scope_slots: u16,
 }
 
 #[enum_dispatch]

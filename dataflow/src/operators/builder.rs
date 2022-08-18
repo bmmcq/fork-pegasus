@@ -26,6 +26,10 @@ impl OperatorBuilder {
             dependents: SmallVec::new(),
         }
     }
+    
+    pub fn info(&self) -> &OperatorInfo {
+        &self.info
+    }
 
     pub fn add_dependency(&mut self, index: usize) {
         self.dependencies.push(index)

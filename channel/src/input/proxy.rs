@@ -89,6 +89,21 @@ where
     }
 }
 
+
+impl<T> AsAny for MultiScopeInputProxy<T>
+    where
+        T: Data,
+{
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+}
+
+
 impl<T> Input for MultiScopeInputProxy<T>
 where
     T: Data,

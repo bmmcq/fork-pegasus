@@ -21,7 +21,7 @@ use crate::block::{BlockEntry, BlockHandle, BlockKind};
 use crate::data::Data;
 use crate::eos::Eos;
 use crate::error::PushError;
-use crate::output::delta::MergedScopeDelta;
+use crate::output::delta::{ScopeDelta};
 use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::output::OutputInfo;
 
@@ -119,7 +119,7 @@ pub struct OutputHandle<D, T> {
     info: OutputInfo,
     in_tag: Tag,
     out_tag: Tag,
-    scope_delta: MergedScopeDelta,
+    _scope_delta: ScopeDelta,
     send_buffer: Option<BlockEntry<D>>,
     output: T,
 }
@@ -129,7 +129,7 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    pub fn new(worker_index: u16, tag: Tag, info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
+    pub(crate) fn new(worker_index: u16, tag: Tag, info: OutputInfo, delta: ScopeDelta, output: T) -> Self {
         assert_eq!(info.scope_level, 0);
         let out_tag = delta.evolve(&tag);
         OutputHandle {
@@ -139,17 +139,15 @@ where
             worker_index,
             is_closed: false,
             is_aborted: false,
-            scope_delta: delta,
+            _scope_delta: delta,
             send_buffer: None,
             output,
         }
     }
 
-    pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
         assert_eq!(self.out_tag, end.tag);
         assert!(self.send_buffer.is_none());
-        let tag = self.scope_delta.evolve(&end.tag);
-        end.tag = tag;
         self.output.notify_end(end)
     }
 
@@ -236,15 +234,19 @@ where
     T: AbortHandle,
 {
     fn abort(&mut self, tag: Tag, worker: u16) -> Option<Tag> {
-        let abort = self.output.abort(tag, worker)?;
-        if let Some(block) = self.send_buffer.take() {
-            assert_eq!(block.get_tag(), &abort);
-        }
+        if tag == self.out_tag {
+            let abort = self.output.abort(tag, worker)?;
+            if let Some(block) = self.send_buffer.take() {
+                assert_eq!(block.get_tag(), &abort);
+            }
 
-        // let eb_tag = self.scope_delta.evolve_back(&abort);
-        // assert!(eb_tag.is_root());
-        self.is_aborted = true;
-        Some(self.in_tag.clone())
+            // let eb_tag = self.scope_delta.evolve_back(&abort);
+            // assert!(eb_tag.is_root());
+            self.is_aborted = true;
+            Some(self.in_tag.clone())
+        } else {
+            Some(tag)
+        }
     }
 }
 
@@ -254,16 +256,19 @@ where
     T: StreamPush<D>,
 {
     fn push(&mut self, tag: &Tag, msg: D) -> Result<Pushed<D>, PushError> {
+        assert_eq!(tag, &self.out_tag);
         self.output.push(tag, msg)
     }
 
     fn push_last(&mut self, msg: D, end: Eos) -> Result<(), PushError> {
+        assert_eq!(end.tag, self.out_tag);
         self.output.push_last(msg, end)
     }
 
     fn push_iter<I: Iterator<Item = D>>(
         &mut self, tag: &Tag, iter: &mut I,
     ) -> Result<Pushed<D>, PushError> {
+        assert_eq!(tag, &self.out_tag);
         self.output.push_iter(tag, iter)
     }
 
@@ -286,7 +291,7 @@ where
     T: StreamPush<D>,
 {
     fn pin(&mut self, tag: &Tag) -> Result<bool, PushError> {
-        assert!(tag.is_root());
+        assert_eq!(tag, &self.out_tag);
         Ok(true)
     }
 
@@ -301,7 +306,8 @@ where
     T: StreamPush<D>,
 {
     fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, Self>> {
-        assert!(tag.is_root());
+        assert_eq!(tag, &self.in_tag);
+        // self.pin(&self.out_tag).ok();
         Some(MiniScopeStreamSink::new(self.is_aborted, self.out_tag.clone(), self))
     }
 }
@@ -311,7 +317,7 @@ pub struct MultiScopeOutputHandle<D, T> {
     worker_index: u16,
     is_closed: bool,
     info: OutputInfo,
-    scope_delta: MergedScopeDelta,
+    scope_delta: ScopeDelta,
     send_buffer: AHashMap<Tag, BlockEntry<D>>,
     aborts: AHashSet<Tag>,
     output: T,
@@ -322,7 +328,7 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    pub fn new(worker_index: u16, info: OutputInfo, delta: MergedScopeDelta, output: T) -> Self {
+    pub fn new(worker_index: u16, info: OutputInfo, delta: ScopeDelta, output: T) -> Self {
         Self {
             info,
             worker_index,
@@ -334,15 +340,13 @@ where
         }
     }
 
-    pub fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
-        let tag = self.scope_delta.evolve(&end.tag);
-        assert!(!self.send_buffer.contains_key(&tag));
-        self.aborts.remove(&tag);
-        end.tag = tag;
+    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
+        assert!(!self.send_buffer.contains_key(&end.tag));
+        self.aborts.remove(&end.tag);
         self.output.notify_end(end)
     }
 
-    pub fn flush(&mut self) -> Result<(), PushError> {
+    fn flush(&mut self) -> Result<(), PushError> {
         self.output.flush()
     }
 
@@ -479,9 +483,8 @@ where
         if let Some(_block) = self.send_buffer.remove(&tag) {
             //
         }
-        let abort_tag = self.scope_delta.evolve_back(&tag);
-        self.aborts.insert(abort_tag.clone());
-        Some(abort_tag)
+
+        todo!()
     }
 }
 

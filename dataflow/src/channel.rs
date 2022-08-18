@@ -3,11 +3,11 @@ use std::collections::VecDeque;
 use std::sync::Arc;
 
 use nohash_hasher::IntMap;
-use pegasus_channel::alloc::{Channel, ChannelKind};
+use pegasus_channel::alloc::{Channel, ChannelKind, MultiScopeChannel};
 use pegasus_channel::data::Data;
 use pegasus_channel::error::IOError;
 use pegasus_channel::event::emitter::{BaseEventCollector, BaseEventEmitter};
-use pegasus_channel::input::proxy::InputProxy;
+use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::unify::EnumStreamBufPush;
 use pegasus_channel::ChannelInfo;
@@ -74,6 +74,13 @@ impl ChannelAllocator {
         Ok(())
     }
 
+    pub async fn alloc_multi_scope<T>(&mut self, ch_info: ChannelInfo) -> Result<(), IOError> where T: Data {
+        let config = self.config.server_config();
+        let res: VecDeque<MultiScopeChannel<T>> = pegasus_channel::alloc::alloc_multi_scope_buf_exchange::<T>(ch_info, config, &self.event_emitters).await?;
+        self.ch_resources.insert(ch_info.ch_id.index, Box::new(res));
+        Ok(())
+    }
+
     pub fn get<T>(
         &mut self, tag: Tag, worker_index: u16, ch_info: ChannelInfo, kind: ChannelKind<T>,
     ) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError>
@@ -105,6 +112,42 @@ impl ChannelAllocator {
                 } else {
                     Err(JobBuildError::ChannelNotAlloc(format!("channel({})", ch_info.ch_id.index)))
                 }
+            }
+            ChannelKind::Aggregate => {
+                todo!()
+            }
+            ChannelKind::Broadcast => {
+                todo!()
+            }
+        }
+    }
+
+    pub fn get_multi_scope<T>(&mut self, worker_index: u16, ch_info: ChannelInfo, kind: ChannelKind<T>) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError> where T: Data {
+        match kind {
+            ChannelKind::Pipeline => {
+                let (push, pull) = pegasus_channel::alloc::alloc_multi_scope_buf_pipeline(worker_index, ch_info);
+                let input = Box::new(MultiScopeInputProxy::new(worker_index, ch_info, pull));
+                Ok((push, input))
+            }
+            ChannelKind::Exchange(router) => {
+                if let Some(res) = self.ch_resources.get_mut(&ch_info.ch_id.index) {
+                    if let Some(ch_res) = res.downcast_mut::<VecDeque<MultiScopeChannel<T>>>() {
+                        let ch = ch_res
+                            .pop_front()
+                            .expect("channel lost after allocated");
+                        assert_eq!(ch_info, ch.ch_info);
+                        Ok(ch.into_exchange(worker_index, router))
+                    } else {
+                        Err(JobBuildError::TypeCastError(format!(
+                            "channel({}) type cast to {} fail;",
+                            ch_info.ch_id.index,
+                            std::any::type_name::<T>()
+                        )))
+                    }
+                } else {
+                    Err(JobBuildError::ChannelNotAlloc(format!("channel({})", ch_info.ch_id.index)))
+                }
+
             }
             ChannelKind::Aggregate => {
                 todo!()

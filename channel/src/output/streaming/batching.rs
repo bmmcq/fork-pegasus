@@ -177,14 +177,14 @@ pub struct MultiScopeBufStreamPush<T, P> {
 }
 
 impl<T, P> MultiScopeBufStreamPush<T, P> {
-    pub fn new(ch_info: ChannelInfo, worker_index: u16, scope_buf_slots: u16, inner: P) -> Self {
+    pub fn new(ch_info: ChannelInfo, worker_index: u16, inner: P) -> Self {
         Self {
             src_index: worker_index,
-            ch_info,
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
-            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity, scope_buf_slots),
+            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity, ch_info.max_scope_slots),
+            ch_info,
             inner,
         }
     }

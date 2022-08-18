@@ -30,8 +30,6 @@ pub trait Output: Send + 'static {
 
     fn abort(&self, tag: Tag, worker: u16) -> Option<Tag>;
 
-    fn flush(&self) -> Result<(), PushError>;
-
     fn close(&self) -> Result<(), PushError>;
 
     fn is_closed(&self) -> bool;

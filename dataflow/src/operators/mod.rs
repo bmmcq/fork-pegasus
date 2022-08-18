@@ -8,6 +8,7 @@ use pegasus_channel::output::unify::EnumStreamBufPush;
 use pegasus_channel::output::AnyOutput;
 use pegasus_common::tag::Tag;
 use smallvec::SmallVec;
+use crate::context::ScopeContext;
 
 use crate::errors::JobExecError;
 
@@ -22,8 +23,7 @@ pub type MultiScopeStreamSink<'a, T> = MiniScopeStreamSink<'a, T, MultiScopeOutp
 pub struct OperatorInfo {
     pub name: String,
     pub index: u16,
-    pub scope_level: u8,
-    pub is_multi_scope: bool,
+    pub scope_ctx: ScopeContext
 }
 
 impl std::fmt::Display for OperatorInfo {
@@ -33,8 +33,8 @@ impl std::fmt::Display for OperatorInfo {
 }
 
 impl OperatorInfo {
-    pub fn new(name: &str, index: u16, scope_level: u8) -> Self {
-        OperatorInfo { name: name.to_owned(), index, scope_level, is_multi_scope: false }
+    pub fn new(name: &str, index: u16, scope_ctx: ScopeContext) -> Self {
+        OperatorInfo { name: name.to_owned(), index, scope_ctx }
     }
 }
 
@@ -137,3 +137,4 @@ pub mod builder;
 pub mod consume;
 pub mod source;
 pub mod unary;
+pub mod repeat;
