@@ -26,7 +26,7 @@ impl OperatorBuilder {
             dependents: SmallVec::new(),
         }
     }
-    
+
     pub fn info(&self) -> &OperatorInfo {
         &self.info
     }

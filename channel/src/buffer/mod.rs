@@ -184,8 +184,8 @@ impl<D> ScopeBuffer<D> {
         }
     }
 
-    pub fn with_slot(slots: Arc<SharedScopedBufferPool<D>>) -> Self {
-        Self { scope_buffers: AHashMap::new(), scope_buf_slots: ScopedBufferPool::Shared(slots) }
+    pub fn with_slot(slots: ScopedBufferPool<D>) -> Self {
+        Self { scope_buffers: AHashMap::new(), scope_buf_slots: slots }
     }
 
     pub fn get_buffer(&self, tag: &Tag) -> Option<&BufferPtr<D>> {

@@ -20,9 +20,9 @@ use super::{MultiScopeOutput, Operator};
 use crate::errors::JobExecError;
 use crate::operators::builder::Builder;
 use crate::operators::consume::MiniScopeBatchStream;
-use crate::operators::{Output, State};
+use crate::operators::{Output, State, StreamSink};
 
-pub trait UnaryFunction: Send + 'static {
+trait UnaryShape: Send + 'static {
     fn on_fire(
         &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
         event_emitter: &mut BaseEventEmitter,
@@ -40,18 +40,18 @@ impl<I, O, F> UnaryImpl<I, O, F> {
     }
 }
 
-struct MultiScopeUnaryImpl<I, O, F> {
+pub struct MultiScopeUnaryImpl<I, O, F> {
     func: F,
     _ph: std::marker::PhantomData<(I, O)>,
 }
 
 impl<I, O, F> MultiScopeUnaryImpl<I, O, F> {
-    fn _new(func: F) -> Self {
+    pub fn new(func: F) -> Self {
         Self { func, _ph: std::marker::PhantomData }
     }
 }
 
-fn unary_consume<I, O, T, F, SF>(
+pub(crate) fn unary_consume<I, O, T, F, SF>(
     src: &mut MiniScopeBatchQueue<I>, sink_factory: &mut SF, func: &mut F,
 ) -> Result<(), JobExecError>
 where
@@ -103,7 +103,7 @@ where
     }
 }
 
-impl<I, O, F> UnaryFunction for UnaryImpl<I, O, F>
+impl<I, O, F> UnaryShape for UnaryImpl<I, O, F>
 where
     I: Data,
     O: Data,
@@ -161,7 +161,7 @@ where
     }
 }
 
-impl<I, O, F> UnaryFunction for MultiScopeUnaryImpl<I, O, F>
+impl<I, O, F> UnaryShape for MultiScopeUnaryImpl<I, O, F>
 where
     I: Data,
     O: Data,
@@ -233,7 +233,7 @@ impl<F> UnaryOperator<F> {
 
 impl<F> Operator for UnaryOperator<F>
 where
-    F: UnaryFunction,
+    F: UnaryShape,
 {
     fn inputs(&self) -> &[Box<dyn AnyInput>] {
         self.input.as_slice()
@@ -308,7 +308,7 @@ where
 
 impl<F> Builder for UnaryOperatorBuilder<F>
 where
-    F: UnaryFunction,
+    F: UnaryShape,
 {
     fn build(self: Box<Self>) -> Box<dyn Operator> {
         let output = self.output.build();

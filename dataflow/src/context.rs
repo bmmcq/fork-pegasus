@@ -16,27 +16,15 @@ pub struct ScopeContext {
 
 impl ScopeContext {
     pub fn new(id: u16, level: u8) -> Self {
-        Self {
-            id,
-            level,
-            kind: ContextKind::Flat
-        }
+        Self { id, level, kind: ContextKind::Flat }
     }
 
     pub fn new_repeat(id: u16, level: u8) -> Self {
-        Self {
-            id,
-            level,
-            kind: ContextKind::Repeat
-        }
+        Self { id, level, kind: ContextKind::Repeat }
     }
 
     pub fn new_apply(id: u16, level: u8) -> Self {
-        Self {
-            id,
-            level,
-            kind: ContextKind::Apply
-        }
+        Self { id, level, kind: ContextKind::Apply }
     }
 
     pub fn id(&self) -> u16 {
@@ -56,17 +44,12 @@ pub struct ScopeContextWithOps {
     ctx: ScopeContext,
     ops_index: SmallVec<[u16; 3]>,
     parent: Option<u16>,
-    children: SmallVec<[u16; 2]>
+    children: SmallVec<[u16; 2]>,
 }
 
 impl ScopeContextWithOps {
     pub fn new(ctx: ScopeContext) -> Self {
-        Self {
-            ctx,
-            ops_index: SmallVec::new(),
-            parent: None,
-            children: SmallVec::new()
-        }
+        Self { ctx, ops_index: SmallVec::new(), parent: None, children: SmallVec::new() }
     }
 
     pub fn add_op(&mut self, index: u16) {

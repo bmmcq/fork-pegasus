@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -7,6 +8,7 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crossbeam_queue::{ArrayQueue, SegQueue};
 use pegasus_common::tag::Tag;
 use tokio::sync::{Notify, RwLock};
+use pegasus_common::rc::UnsafeRcPtr;
 
 pub struct WoBatch<T> {
     data: Box<[Option<T>]>,
@@ -268,6 +270,7 @@ impl<T> Clone for BufferPool<T> {
 
 pub enum ScopedBufferPool<T> {
     Local(LocalScopedBufferPool<T>),
+    LocalShared(UnsafeRcPtr<RefCell<LocalScopedBufferPool<T>>>),
     Shared(Arc<SharedScopedBufferPool<T>>),
 }
 
@@ -275,6 +278,7 @@ impl<T> ScopedBufferPool<T> {
     pub fn release_slot(&mut self, tag: &Tag, pool: BufferPool<T>) {
         match self {
             ScopedBufferPool::Local(p) => p.release_slot(tag),
+            ScopedBufferPool::LocalShared(p) => p.borrow_mut().release_slot(tag),
             ScopedBufferPool::Shared(p) => p.release_slot(tag, pool),
         }
     }
@@ -282,6 +286,7 @@ impl<T> ScopedBufferPool<T> {
     pub fn alloc_slot(&mut self, tag: &Tag) -> Option<BufferPool<T>> {
         match self {
             ScopedBufferPool::Local(p) => p.alloc_slot(tag),
+            ScopedBufferPool::LocalShared(p) => p.borrow_mut().alloc_slot(tag),
             ScopedBufferPool::Shared(p) => p.alloc_slot(tag),
         }
     }

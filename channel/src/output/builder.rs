@@ -20,7 +20,7 @@ use pegasus_common::tag::Tag;
 
 use crate::data::Data;
 use crate::output::delta::ScopeDelta;
-use crate::output::proxy::OutputProxy;
+use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamBufPush;
 use crate::output::{AnyOutput, OutputInfo};
 use crate::Port;
@@ -133,6 +133,11 @@ impl <D: Data> MultiScopeOutputBuilder<D> {
         self.delta = Some(delta)
     }
 
+    pub fn shared(self) -> MultiScopeOutputBuilderRef<D> {
+        MultiScopeOutputBuilderRef {
+            inner: Rc::new(RefCell::new(self))
+        }
+    }
 }
 
 pub struct OutputBuildRef<D: Data> {
@@ -185,6 +190,34 @@ impl <D: Data> MultiScopeOutputBuilderRef<D> {
         self.inner.borrow().get_port()
     }
 
+    pub fn get_outbound_scope_level(&self) -> u8 {
+        self.inner.borrow().get_outbound_scope_level()
+    }
 
+    pub fn set_push(&self, push: EnumStreamBufPush<D>) {
+        self.inner.borrow_mut().set_push(push)
+    }
+
+    pub fn set_delta(&self, delta: ScopeDelta) {
+        self.inner.borrow_mut().set_delta(delta)
+    }
 }
 
+impl<D: Data> Clone for MultiScopeOutputBuilderRef<D> {
+    fn clone(&self) -> Self {
+        Self { inner: self.inner.clone() }
+    }
+}
+
+impl<D: Data> OutputBuilder for MultiScopeOutputBuilderRef<D> {
+    fn build(self: Box<Self>) -> Box<dyn AnyOutput> {
+        let mut bm = self.inner.borrow_mut();
+        let push = bm
+            .push
+            .take()
+            .unwrap_or(EnumStreamBufPush::Null);
+        let worker_index = self.inner.borrow().worker_index;
+        let delta = bm.delta.unwrap_or(ScopeDelta::None);
+        Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, delta, push))
+    }
+}

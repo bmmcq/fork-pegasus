@@ -1,8 +1,8 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
-use nohash_hasher::IntMap;
 
+use nohash_hasher::IntMap;
 use pegasus_channel::alloc::ChannelKind;
 use pegasus_channel::data::Data;
 use pegasus_channel::event::emitter::BaseEventEmitter;
@@ -14,12 +14,10 @@ use pegasus_common::tag::Tag;
 
 use crate::channel::ChannelAllocator;
 use crate::context::{ScopeContext, ScopeContextWithOps};
-use crate::errors::{JobBuildError};
+use crate::errors::JobBuildError;
 use crate::operators::builder::{Builder, OperatorBuilder};
-use crate::operators::{OperatorInfo};
+use crate::operators::OperatorInfo;
 use crate::plan::DataFlowPlan;
-
-
 
 pub struct DataflowBuilder {
     pub(crate) index: u16,
@@ -66,7 +64,6 @@ impl DataflowBuilder {
         }
     }
 
-
     pub(crate) fn add_operator<OB>(&self, origin_op_index: usize, info: OperatorInfo, op: OB)
     where
         OB: Builder,
@@ -77,7 +74,10 @@ impl DataflowBuilder {
         // only need in primary builder;
         if self.index == 0 {
             let mut ctxes = self.scope_ctxes.borrow_mut();
-            ctxes.get_mut(&info.scope_ctx.id()).expect("scope context not found").add_op(info.index);
+            ctxes
+                .get_mut(&info.scope_ctx.id())
+                .expect("scope context not found")
+                .add_op(info.index);
         }
         let mut op_builder = OperatorBuilder::new(info, op);
         op_builder.dependent_on(origin_op_index);
@@ -89,7 +89,9 @@ impl DataflowBuilder {
     }
 
     pub(crate) fn add_scope_cxt(&self, ctx: ScopeContext) {
-        self.scope_ctxes.borrow_mut().insert(ctx.id(), ScopeContextWithOps::new(ctx));
+        self.scope_ctxes
+            .borrow_mut()
+            .insert(ctx.id(), ScopeContextWithOps::new(ctx));
     }
 
     pub(crate) fn new_channel_id(&self) -> ChannelId {
@@ -124,7 +126,12 @@ impl DataflowBuilder {
             .get(tag, self.worker_index, ch_info, kind)
     }
 
-    pub(crate) async fn alloc_multi_scope<T>(&self, ch_info: ChannelInfo, kind: ChannelKind<T>) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError> where T: Data {
+    pub(crate) async fn alloc_multi_scope<T>(
+        &self, ch_info: ChannelInfo, kind: ChannelKind<T>,
+    ) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError>
+    where
+        T: Data,
+    {
         if !kind.is_pipeline() && self.index == 0 {
             self.channel_alloc
                 .borrow_mut()

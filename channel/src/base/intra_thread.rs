@@ -23,24 +23,30 @@ use crate::{ChannelId, Pull, Push};
 
 pub struct ThreadPush<T> {
     pub id: ChannelId,
+    is_close: bool,
     queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
-    is_closed: UnsafeRcPtr<RefCell<bool>>,
+    push_state: UnsafeRcPtr<RefCell<u32>>,
+    pull_state: UnsafeRcPtr<RefCell<bool>>, 
 }
 
 impl<T> ThreadPush<T> {
     fn new(
-        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, is_closed: UnsafeRcPtr<RefCell<bool>>,
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>, pull_state: UnsafeRcPtr<RefCell<bool>>
     ) -> Self {
-        ThreadPush { id, queue, is_closed }
+        ThreadPush { id, is_close: false, queue, push_state, pull_state }
     }
 }
 
 impl<T: Send> Push<T> for ThreadPush<T> {
     #[inline]
     fn push(&mut self, msg: T) -> Result<(), PushError> {
-        if !*self.is_closed.borrow() {
-            self.queue.borrow_mut().push_back(msg);
-            Ok(())
+        if !self.is_close {
+            if *self.pull_state.borrow() {
+                self.queue.borrow_mut().push_back(msg);
+                Ok(())
+            } else { 
+               Err(PushError::Disconnected) 
+            }
         } else {
             let error = PushError::AlreadyClosed;
             Err(error)
@@ -49,7 +55,10 @@ impl<T: Send> Push<T> for ThreadPush<T> {
 
     #[inline]
     fn close(&mut self) -> Result<(), PushError> {
-        *self.is_closed.borrow_mut() = true;
+        if !self.is_close {
+            self.is_close = true;
+            *self.push_state.borrow_mut() -= 1;
+        }
         Ok(())
     }
 }
@@ -57,14 +66,15 @@ impl<T: Send> Push<T> for ThreadPush<T> {
 pub struct ThreadPull<T> {
     pub id: ChannelId,
     queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
-    is_closed: UnsafeRcPtr<RefCell<bool>>,
+    push_state: UnsafeRcPtr<RefCell<u32>>,
+    pull_state: UnsafeRcPtr<RefCell<bool>>
 }
 
 impl<T> ThreadPull<T> {
     fn new(
-        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, is_closed: UnsafeRcPtr<RefCell<bool>>,
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>, pull_state: UnsafeRcPtr<RefCell<bool>>
     ) -> Self {
-        ThreadPull { id, queue, is_closed }
+        ThreadPull { id, queue, push_state, pull_state }
     }
 }
 
@@ -73,7 +83,7 @@ impl<T: Send> Pull<T> for ThreadPull<T> {
         match self.queue.borrow_mut().pop_front() {
             Some(t) => Ok(Some(t)),
             None => {
-                if *self.is_closed.borrow() {
+                if *self.push_state.borrow() == 0 {
                     // is closed;
                     Err(PullError::Eof)
                 } else if self.queue.strong_count() == 1 {
@@ -90,12 +100,29 @@ impl<T: Send> Pull<T> for ThreadPull<T> {
     }
 }
 
-#[allow(dead_code)]
+impl <T> Drop for ThreadPull<T> {
+    fn drop(&mut self) {
+        *self.pull_state.borrow_mut() = false;
+    }
+}
+
 pub fn pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPull<T>) {
     let queue = UnsafeRcPtr::new(RefCell::new(VecDeque::new()));
-    let is_closed = UnsafeRcPtr::new(RefCell::new(false));
-    (ThreadPush::new(id, queue.clone(), is_closed.clone()), ThreadPull::new(id, queue, is_closed))
+    let push_state = UnsafeRcPtr::new(RefCell::new(1));
+    let pull_state = UnsafeRcPtr::new(RefCell::new(true));
+    (ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()), ThreadPull::new(id, queue, push_state, pull_state))
 }
+
+pub fn binary_pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPush<T>, ThreadPull<T>) {
+    let queue = UnsafeRcPtr::new(RefCell::new(VecDeque::new()));
+    let push_state = UnsafeRcPtr::new(RefCell::new(2));
+    let pull_state = UnsafeRcPtr::new(RefCell::new(true));
+    (
+        ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()),
+        ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()),
+        ThreadPull::new(id, queue, push_state, pull_state)
+    )
+} 
 
 #[cfg(test)]
 mod test {

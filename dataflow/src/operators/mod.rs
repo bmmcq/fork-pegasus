@@ -8,8 +8,8 @@ use pegasus_channel::output::unify::EnumStreamBufPush;
 use pegasus_channel::output::AnyOutput;
 use pegasus_common::tag::Tag;
 use smallvec::SmallVec;
-use crate::context::ScopeContext;
 
+use crate::context::ScopeContext;
 use crate::errors::JobExecError;
 
 pub type BatchInput<T> = InputHandle<T, BasePull<MiniScopeBatch<T>>>;
@@ -23,7 +23,7 @@ pub type MultiScopeStreamSink<'a, T> = MiniScopeStreamSink<'a, T, MultiScopeOutp
 pub struct OperatorInfo {
     pub name: String,
     pub index: u16,
-    pub scope_ctx: ScopeContext
+    pub scope_ctx: ScopeContext,
 }
 
 impl std::fmt::Display for OperatorInfo {
@@ -135,6 +135,6 @@ pub mod binary;
 pub mod branch;
 pub mod builder;
 pub mod consume;
+pub mod repeat;
 pub mod source;
 pub mod unary;
-pub mod repeat;

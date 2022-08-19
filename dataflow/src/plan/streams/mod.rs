@@ -1,18 +1,21 @@
+use std::future::Future;
+
 use pegasus_channel::alloc::ChannelKind;
-use pegasus_channel::{ChannelInfo, Port};
 use pegasus_channel::data::Data;
-use pegasus_channel::output::builder::{OutputBuilderImpl, OutputBuildRef};
+use pegasus_channel::output::builder::{OutputBuildRef, OutputBuilderImpl};
 use pegasus_channel::output::delta::ScopeDelta;
+use pegasus_channel::{ChannelInfo, Port};
 use pegasus_common::tag::Tag;
+
 use crate::context::ScopeContext;
 use crate::errors::{JobBuildError, JobExecError};
 use crate::operators::consume::MiniScopeBatchStream;
-use crate::operators::{OperatorInfo, StreamSink};
 use crate::operators::source::SourceOperatorBuilder;
 use crate::operators::unary::{UnaryImpl, UnaryOperatorBuilder};
+use crate::operators::{MultiScopeStreamSink, OperatorInfo, StreamSink};
 use crate::plan::builder::DataflowBuilder;
 use crate::plan::streams::exchange::ExchangeStream;
-use crate::plan::streams::repeat::RepeatStream;
+use crate::plan::streams::repeat::{RepeatSource, RepeatStream};
 
 pub struct Stream<D: Data> {
     src_op_index: usize,
@@ -27,18 +30,18 @@ pub struct Stream<D: Data> {
 
 impl<D: Data> Stream<D> {
     pub fn repartition<P>(mut self, partitioner: P) -> ExchangeStream<D>
-        where
-            P: Fn(&D) -> u64 + Send + 'static,
+    where
+        P: Fn(&D) -> u64 + Send + 'static,
     {
         self.channel = ChannelKind::Exchange(partitioner.into());
         ExchangeStream::new(self)
     }
 
     pub async fn unary<O, Co, F>(self, name: &str, construct: Co) -> Result<Stream<O>, JobBuildError>
-        where
-            O: Data,
-            Co: FnOnce() -> F,
-            F: FnMut(&mut MiniScopeBatchStream<D>, &mut StreamSink<O>) -> Result<(), JobExecError>
+    where
+        O: Data,
+        Co: FnOnce() -> F,
+        F: FnMut(&mut MiniScopeBatchStream<D>, &mut StreamSink<O>) -> Result<(), JobExecError>
             + Send
             + 'static,
     {
@@ -74,22 +77,28 @@ impl<D: Data> Stream<D> {
         })
     }
 
-    pub async fn repeat<CF>(self, _times: u16, _construct: CF) -> Result<Stream<D>, JobBuildError>
-        where CF: FnOnce(RepeatStream<D>) -> Result<RepeatStream<D>, JobBuildError>
+    pub async fn repeat<CF, Fut>(self, times: u32, construct: CF) -> Result<Stream<D>, JobBuildError>
+    where
+        CF: FnOnce(RepeatSource<D>) -> Fut,
+        Fut: Future<Output = Result<RepeatStream<D>, JobBuildError>>,
     {
-
         self.src.set_delta(ScopeDelta::ToChild);
-        let next_op_index = self.builder.op_size() as u16;
-        let ch_info = self.new_channel_info((next_op_index, 0).into());
+        let repeat_src = RepeatSource::new(times, self);
+        let leave = construct(repeat_src).await?.feedback();
+        leave.src.set_delta(ScopeDelta::ToParent);
+        Ok(leave)
+    }
 
-        let (push, input) = self
-            .builder
-            .alloc_multi_scope::<D>(ch_info, self.channel)
-            .await?;
-        // how to split this push;
-        self.src.set_push(push);
-
-
+    async fn _switch_unary<O, CF, F>(
+        self, _times: u32, _name: &str, _construct: CF,
+    ) -> Result<RepeatStream<O>, JobBuildError>
+    where
+        O: Data,
+        CF: FnOnce() -> F,
+        F: FnMut(&mut MiniScopeBatchStream<D>, &mut MultiScopeStreamSink<O>) -> Result<(), JobExecError>
+            + Send
+            + 'static,
+    {
         todo!()
     }
 
@@ -108,14 +117,18 @@ impl<D: Data> Stream<D> {
             max_scope_slots: 64,
         }
     }
+
+    pub(crate) fn builder(&self) -> &DataflowBuilder {
+        &self.builder
+    }
 }
 
 impl DataflowBuilder {
     pub fn input_from<It>(&self, source: It) -> Stream<It::Item>
-        where
-            It: IntoIterator + 'static,
-            It::Item: Data,
-            It::IntoIter: Send + 'static,
+    where
+        It: IntoIterator + 'static,
+        It::Item: Data,
+        It::IntoIter: Send + 'static,
     {
         assert_eq!(self.op_size(), 0);
         let scope_ctx = ScopeContext::new(0, 0);

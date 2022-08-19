@@ -4,13 +4,13 @@ use std::sync::Arc;
 
 use nohash_hasher::IntMap;
 use pegasus_channel::alloc::{Channel, ChannelKind, MultiScopeChannel};
-use pegasus_channel::data::Data;
+use pegasus_channel::data::{Data, MiniScopeBatch};
 use pegasus_channel::error::IOError;
 use pegasus_channel::event::emitter::{BaseEventCollector, BaseEventEmitter};
 use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
 use pegasus_channel::input::AnyInput;
-use pegasus_channel::output::unify::EnumStreamBufPush;
-use pegasus_channel::ChannelInfo;
+use pegasus_channel::output::unify::{BaseBatchPull, BaseBatchPush, EnumStreamBufPush};
+use pegasus_channel::{ChannelId, ChannelInfo};
 use pegasus_common::config::JobConfig;
 use pegasus_common::tag::Tag;
 
@@ -74,10 +74,20 @@ impl ChannelAllocator {
         Ok(())
     }
 
-    pub async fn alloc_multi_scope<T>(&mut self, ch_info: ChannelInfo) -> Result<(), IOError> where T: Data {
+    pub async fn alloc_multi_scope<T>(&mut self, ch_info: ChannelInfo) -> Result<(), IOError>
+    where
+        T: Data,
+    {
         let config = self.config.server_config();
-        let res: VecDeque<MultiScopeChannel<T>> = pegasus_channel::alloc::alloc_multi_scope_buf_exchange::<T>(ch_info, config, &self.event_emitters).await?;
-        self.ch_resources.insert(ch_info.ch_id.index, Box::new(res));
+        let res: VecDeque<MultiScopeChannel<T>> =
+            pegasus_channel::alloc::alloc_multi_scope_buf_exchange::<T>(
+                ch_info,
+                config,
+                &self.event_emitters,
+            )
+            .await?;
+        self.ch_resources
+            .insert(ch_info.ch_id.index, Box::new(res));
         Ok(())
     }
 
@@ -122,10 +132,16 @@ impl ChannelAllocator {
         }
     }
 
-    pub fn get_multi_scope<T>(&mut self, worker_index: u16, ch_info: ChannelInfo, kind: ChannelKind<T>) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError> where T: Data {
+    pub fn get_multi_scope<T>(
+        &mut self, worker_index: u16, ch_info: ChannelInfo, kind: ChannelKind<T>,
+    ) -> Result<(EnumStreamBufPush<T>, Box<dyn AnyInput>), JobBuildError>
+    where
+        T: Data,
+    {
         match kind {
             ChannelKind::Pipeline => {
-                let (push, pull) = pegasus_channel::alloc::alloc_multi_scope_buf_pipeline(worker_index, ch_info);
+                let (push, pull) =
+                    pegasus_channel::alloc::alloc_multi_scope_buf_pipeline(worker_index, ch_info);
                 let input = Box::new(MultiScopeInputProxy::new(worker_index, ch_info, pull));
                 Ok((push, input))
             }
@@ -147,7 +163,6 @@ impl ChannelAllocator {
                 } else {
                     Err(JobBuildError::ChannelNotAlloc(format!("channel({})", ch_info.ch_id.index)))
                 }
-
             }
             ChannelKind::Aggregate => {
                 todo!()
@@ -156,5 +171,14 @@ impl ChannelAllocator {
                 todo!()
             }
         }
+    }
+
+    pub fn get_binary<T>(
+        &mut self, ch_id: ChannelId,
+    ) -> (BaseBatchPush<T>, BaseBatchPush<T>, BaseBatchPull<T>)
+    where
+        T: Data,
+    {
+        pegasus_channel::base::alloc_binary_pipeline::<MiniScopeBatch<T>>(ch_id)
     }
 }

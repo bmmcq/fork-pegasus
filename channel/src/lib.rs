@@ -63,6 +63,18 @@ pub struct ChannelInfo {
     pub max_scope_slots: u16,
 }
 
+pub struct BinaryChannelInfo {
+    pub ch_id: ChannelId,
+    pub scope_level: u8,
+    pub ch_type: ChannelType,
+    pub batch_size: u16,
+    pub batch_capacity: u16,
+    pub left_source_port: Port,
+    pub right_source_port: Port,
+    pub target_port: Port,
+    pub max_scope_slots: u16, 
+}
+
 #[enum_dispatch]
 pub trait Push<T> {
     /// Push message into underlying channel, returns [`Err(IOError)`] if failed;

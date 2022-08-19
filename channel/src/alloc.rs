@@ -7,7 +7,7 @@ use pegasus_server::{Encode, ServerInstance};
 
 use crate::base::{BasePull, SimpleDecoder};
 use crate::buffer::decoder::{BatchDecoder, MultiScopeBatchDecoder};
-use crate::buffer::pool::{BufferPool, SharedScopedBufferPool};
+use crate::buffer::pool::{BufferPool, ScopedBufferPool, SharedScopedBufferPool};
 use crate::data::{Data, MiniScopeBatch};
 use crate::event::emitter::{BaseEventCollector, BaseEventEmitter};
 use crate::input::proxy::{InputProxy, MultiScopeInputProxy};
@@ -104,13 +104,13 @@ where
 
 pub fn alloc_binary_buf_pipeline<T>(
     worker_index: u16, tag: Tag, ch_info: ChannelInfo,
-) -> (EnumStreamBufPush<T>, BasePull<MiniScopeBatch<T>>)
+) -> (EnumStreamBufPush<T>, EnumStreamBufPush<T>, BasePull<MiniScopeBatch<T>>)
     where
         T: Data + Encode,
 {
-    let (push, pull) = crate::base::alloc_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
-    let push = EnumStreamBufPush::pipeline(worker_index, ch_info, tag, push);
-    todo!()
+    let (left, right, pull) = crate::base::alloc_binary_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
+    let (left, right) = EnumStreamBufPush::binary_pipeline(worker_index, ch_info, tag, left, right);
+    (left, right, pull)
 }
 
 
@@ -123,6 +123,14 @@ where
     let (push, pull) = crate::base::alloc_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
     let push = EnumStreamBufPush::multi_scope_pipeline(worker_index, ch_info, push);
     (push, pull)
+}
+
+pub fn alloc_binary_multi_scope_buf_pipeline<T>(worker_index: u16, ch_info: ChannelInfo) -> (EnumStreamBufPush<T>, EnumStreamBufPush<T>, BaseBatchPull<T>)
+    where T: Data
+{
+    let (left, right, pull) = crate::base::alloc_binary_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
+    let (left, right) = EnumStreamBufPush::binary_multi_scope_pipeline(worker_index, ch_info, left, right);
+    (left, right, pull)
 }
 
 pub async fn alloc_buf_exchange<T>(
@@ -281,7 +289,8 @@ where
                     event_emitters[i].clone(),
                     p,
                 );
-                let push = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, rbuf, p);
+                let pool = ScopedBufferPool::Shared(rbuf);
+                let push = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, pool, p);
                 buf_pushes.push(push);
             }
             worker_index += 1;
@@ -300,7 +309,8 @@ where
                 event_emitters[i].clone(),
                 p,
             );
-            let push = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, rbuf, p);
+            let pool = ScopedBufferPool::Shared(rbuf);
+            let push = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, pool, p);
             buf_pushes.push(push);
         }
         chs.push_back(MultiScopeChannel { ch_info, pushes: buf_pushes, pull: last_pull });
