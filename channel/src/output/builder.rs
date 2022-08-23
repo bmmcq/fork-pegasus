@@ -29,7 +29,7 @@ pub trait OutputBuilder {
     fn build(self: Box<Self>) -> Box<dyn AnyOutput>;
 }
 
-pub struct OutputBuilderImpl<D: Data> {
+pub struct StreamOutputBuilder<D: Data> {
     worker_index: u16,
     info: OutputInfo,
     tag: Tag,
@@ -37,10 +37,10 @@ pub struct OutputBuilderImpl<D: Data> {
     push: Option<EnumStreamBufPush<D>>,
 }
 
-impl <D: Data> OutputBuilderImpl<D> {
+impl<D: Data> StreamOutputBuilder<D> {
     pub fn new(worker_index: u16, port: Port, tag: Tag) -> Self {
         let scope_level = tag.len() as u8;
-        OutputBuilderImpl {
+        StreamOutputBuilder {
             worker_index,
             tag,
             delta: None,
@@ -66,7 +66,7 @@ impl <D: Data> OutputBuilderImpl<D> {
             Some(ScopeDelta::ToParent) => {
                 assert!(self.info.scope_level > 0);
                 self.info.scope_level - 1
-            },
+            }
         }
     }
 
@@ -80,19 +80,19 @@ impl <D: Data> OutputBuilderImpl<D> {
         self.delta = Some(delta)
     }
 
-    pub fn shared(self) -> OutputBuildRef<D> {
-        OutputBuildRef { inner: Rc::new(RefCell::new(self)) }
+    pub fn shared(self) -> StreamBuilder<D> {
+        StreamBuilder { inner: Rc::new(RefCell::new(self)) }
     }
 }
 
-pub struct MultiScopeOutputBuilder<D: Data> {
+pub struct MultiScopeStreamOutputBuilder<D: Data> {
     worker_index: u16,
-    info : OutputInfo,
+    info: OutputInfo,
     delta: Option<ScopeDelta>,
-    push: Option<EnumStreamBufPush<D>>
+    push: Option<EnumStreamBufPush<D>>,
 }
 
-impl <D: Data> MultiScopeOutputBuilder<D> {
+impl<D: Data> MultiScopeStreamOutputBuilder<D> {
     pub fn new(worker_index: u16, inbound_scope_level: u8, port: Port) -> Self {
         Self {
             worker_index,
@@ -119,7 +119,7 @@ impl <D: Data> MultiScopeOutputBuilder<D> {
             Some(ScopeDelta::ToParent) => {
                 assert!(self.info.scope_level > 0);
                 self.info.scope_level - 1
-            },
+            }
         }
     }
 
@@ -133,20 +133,22 @@ impl <D: Data> MultiScopeOutputBuilder<D> {
         self.delta = Some(delta)
     }
 
-    pub fn shared(self) -> MultiScopeOutputBuilderRef<D> {
-        MultiScopeOutputBuilderRef {
-            inner: Rc::new(RefCell::new(self))
-        }
+    pub fn shared(self) -> MultiScopeStreamBuilder<D> {
+        MultiScopeStreamBuilder { inner: Rc::new(RefCell::new(self)) }
     }
 }
 
-pub struct OutputBuildRef<D: Data> {
-    inner: Rc<RefCell<OutputBuilderImpl<D>>>,
+pub struct StreamBuilder<D: Data> {
+    inner: Rc<RefCell<StreamOutputBuilder<D>>>,
 }
 
-impl<D: Data> OutputBuildRef<D> {
+impl<D: Data> StreamBuilder<D> {
     pub fn get_port(&self) -> Port {
         self.inner.borrow().get_port()
+    }
+
+    pub fn get_inbound_tag(&self) -> Tag {
+        self.inner.borrow().get_inbound_tag().clone()
     }
 
     pub fn get_outbound_scope_level(&self) -> u8 {
@@ -162,13 +164,13 @@ impl<D: Data> OutputBuildRef<D> {
     }
 }
 
-impl<D: Data> Clone for OutputBuildRef<D> {
+impl<D: Data> Clone for StreamBuilder<D> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<D: Data> OutputBuilder for OutputBuildRef<D> {
+impl<D: Data> OutputBuilder for StreamBuilder<D> {
     fn build(self: Box<Self>) -> Box<dyn AnyOutput> {
         let mut bm = self.inner.borrow_mut();
         let push = bm
@@ -181,11 +183,21 @@ impl<D: Data> OutputBuilder for OutputBuildRef<D> {
     }
 }
 
-pub struct MultiScopeOutputBuilderRef<D: Data> {
-    inner: Rc<RefCell<MultiScopeOutputBuilder<D>>>
+pub struct MultiScopeStreamBuilder<D: Data> {
+    inner: Rc<RefCell<MultiScopeStreamOutputBuilder<D>>>,
 }
 
-impl <D: Data> MultiScopeOutputBuilderRef<D> {
+impl<D: Data> MultiScopeStreamBuilder<D> {
+    pub fn new(worker_index: u16, input_scope_level: u8, port: Port) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(MultiScopeStreamOutputBuilder::new(
+                worker_index,
+                input_scope_level,
+                port,
+            ))),
+        }
+    }
+
     pub fn get_port(&self) -> Port {
         self.inner.borrow().get_port()
     }
@@ -203,13 +215,13 @@ impl <D: Data> MultiScopeOutputBuilderRef<D> {
     }
 }
 
-impl<D: Data> Clone for MultiScopeOutputBuilderRef<D> {
+impl<D: Data> Clone for MultiScopeStreamBuilder<D> {
     fn clone(&self) -> Self {
         Self { inner: self.inner.clone() }
     }
 }
 
-impl<D: Data> OutputBuilder for MultiScopeOutputBuilderRef<D> {
+impl<D: Data> OutputBuilder for MultiScopeStreamBuilder<D> {
     fn build(self: Box<Self>) -> Box<dyn AnyOutput> {
         let mut bm = self.inner.borrow_mut();
         let push = bm

@@ -6,9 +6,9 @@ use std::sync::Arc;
 use ahash::AHashMap;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use crossbeam_queue::{ArrayQueue, SegQueue};
+use pegasus_common::rc::UnsafeRcPtr;
 use pegasus_common::tag::Tag;
 use tokio::sync::{Notify, RwLock};
-use pegasus_common::rc::UnsafeRcPtr;
 
 pub struct WoBatch<T> {
     data: Box<[Option<T>]>,
@@ -96,6 +96,14 @@ impl<T> RoBatch<T> {
 
     pub fn iter(&self) -> RoBatchIter<T> {
         RoBatchIter { raw: self, cursor: 0 }
+    }
+}
+
+impl<T> Iterator for RoBatch<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.pop()
     }
 }
 

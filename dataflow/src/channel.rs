@@ -6,7 +6,7 @@ use nohash_hasher::IntMap;
 use pegasus_channel::alloc::{Channel, ChannelKind, MultiScopeChannel};
 use pegasus_channel::data::{Data, MiniScopeBatch};
 use pegasus_channel::error::IOError;
-use pegasus_channel::event::emitter::{BaseEventCollector, BaseEventEmitter};
+use pegasus_channel::event::emitter::{EventCollector, EventEmitter};
 use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::unify::{BaseBatchPull, BaseBatchPush, EnumStreamBufPush};
@@ -18,8 +18,8 @@ use crate::errors::JobBuildError;
 
 pub struct ChannelAllocator {
     config: Arc<JobConfig>,
-    event_emitters: Vec<BaseEventEmitter>,
-    event_collectors: VecDeque<BaseEventCollector>,
+    event_emitters: Vec<EventEmitter>,
+    event_collectors: VecDeque<EventCollector>,
     ch_resources: IntMap<u16, Box<dyn Any>>,
 }
 
@@ -48,12 +48,12 @@ impl ChannelAllocator {
         }
     }
 
-    pub fn get_event_emitter(&self, worker_index: u16) -> &BaseEventEmitter {
+    pub fn get_event_emitter(&self, worker_index: u16) -> &EventEmitter {
         assert!((worker_index as usize) < self.event_emitters.len());
         &self.event_emitters[worker_index as usize]
     }
 
-    pub fn take_event_collector(&mut self) -> Option<BaseEventCollector> {
+    pub fn take_event_collector(&mut self) -> Option<EventCollector> {
         self.event_collectors.pop_front()
     }
 

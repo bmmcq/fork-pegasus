@@ -2,7 +2,7 @@ use std::any::Any;
 
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
-use pegasus_channel::event::emitter::BaseEventEmitter;
+use pegasus_channel::event::emitter::EventEmitter;
 use pegasus_channel::event::Event;
 use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
 use pegasus_channel::input::proxy::{InputProxy, MultiScopeInputProxy};
@@ -18,14 +18,14 @@ use pegasus_common::tag::Tag;
 
 use super::{MultiScopeOutput, Operator};
 use crate::errors::JobExecError;
-use crate::operators::builder::Builder;
+use crate::operators::builder::{BuildCommon, Builder};
 use crate::operators::consume::MiniScopeBatchStream;
-use crate::operators::{Output, State, StreamSink};
+use crate::operators::{Output, State};
 
 trait UnaryShape: Send + 'static {
     fn on_fire(
         &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-        event_emitter: &mut BaseEventEmitter,
+        event_emitter: &mut EventEmitter,
     ) -> Result<State, JobExecError>;
 }
 
@@ -63,7 +63,7 @@ where
         + Send
         + 'static,
 {
-    if let Some(mut sink) = sink_factory.new_session(src.tag()) {
+    if let Some(mut sink) = sink_factory.new_session(src.tag())? {
         {
             let mut src_ext = MiniScopeBatchStream::new(src);
             match (func)(&mut src_ext, &mut sink) {
@@ -116,7 +116,7 @@ where
 {
     fn on_fire(
         &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-        event_emitter: &mut BaseEventEmitter,
+        event_emitter: &mut EventEmitter,
     ) -> Result<State, JobExecError> {
         let mut output_proxy = OutputProxy::<O>::downcast(output).expect("output type cast fail;");
 
@@ -174,7 +174,7 @@ where
 {
     fn on_fire(
         &mut self, worker_index: u16, input: &Box<dyn AnyInput>, output: &Box<dyn AnyOutput>,
-        event_emitter: &mut BaseEventEmitter,
+        event_emitter: &mut EventEmitter,
     ) -> Result<State, JobExecError> {
         let mut input_proxy = MultiScopeInputProxy::<I>::downcast(input).expect("input type cast fail;");
         let mut output_proxy =
@@ -216,7 +216,7 @@ where
 
 pub struct UnaryOperator<F> {
     worker_index: u16,
-    event_emitter: BaseEventEmitter,
+    event_emitter: EventEmitter,
     input: [Box<dyn AnyInput>; 1],
     output: [Box<dyn AnyOutput>; 1],
     func: F,
@@ -224,7 +224,7 @@ pub struct UnaryOperator<F> {
 
 impl<F> UnaryOperator<F> {
     pub fn new(
-        worker_index: u16, event_emitter: BaseEventEmitter, input: Box<dyn AnyInput>,
+        worker_index: u16, event_emitter: EventEmitter, input: Box<dyn AnyInput>,
         output: Box<dyn AnyOutput>, func: F,
     ) -> Self {
         Self { worker_index, event_emitter, input: [input], output: [output], func }
@@ -276,20 +276,25 @@ where
 
 pub struct UnaryOperatorBuilder<F> {
     worker_index: u16,
-    event_emitter: BaseEventEmitter,
     input: Box<dyn AnyInput>,
     output: Box<dyn OutputBuilder>,
     func: F,
 }
 
 impl<F> UnaryOperatorBuilder<F> {
-    pub fn new<T>(
-        worker_index: u16, event_emitter: BaseEventEmitter, input: Box<dyn AnyInput>, output: T, func: F,
-    ) -> Self
-    where
-        T: OutputBuilder + 'static,
-    {
-        Self { worker_index, event_emitter, input, output: Box::new(output), func }
+    pub fn new(mut build_common: BuildCommon, func: F) -> Self {
+        Self {
+            worker_index: build_common.worker_index,
+            input: build_common
+                .inputs
+                .pop()
+                .expect("unary input not found;"),
+            output: build_common
+                .outputs
+                .pop()
+                .expect("unary output not found"),
+            func,
+        }
     }
 }
 
@@ -310,8 +315,8 @@ impl<F> Builder for UnaryOperatorBuilder<F>
 where
     F: UnaryShape,
 {
-    fn build(self: Box<Self>) -> Box<dyn Operator> {
+    fn build(self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator> {
         let output = self.output.build();
-        Box::new(UnaryOperator::new(self.worker_index, self.event_emitter, self.input, output, self.func))
+        Box::new(UnaryOperator::new(self.worker_index, event_emitter, self.input, output, self.func))
     }
 }

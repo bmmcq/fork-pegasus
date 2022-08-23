@@ -72,7 +72,7 @@ pub struct BinaryChannelInfo {
     pub left_source_port: Port,
     pub right_source_port: Port,
     pub target_port: Port,
-    pub max_scope_slots: u16, 
+    pub max_scope_slots: u16,
 }
 
 #[enum_dispatch]

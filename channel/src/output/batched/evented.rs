@@ -3,7 +3,7 @@ use pegasus_common::tag::Tag;
 use crate::abort::AbortHandle;
 use crate::data::{Data, MiniScopeBatch};
 use crate::error::PushError;
-use crate::event::emitter::EventEmitter;
+use crate::event::emitter::EventSender;
 use crate::event::{Event, EventKind};
 use crate::{Port, Push};
 
@@ -11,14 +11,14 @@ pub struct EventEosBatchPush<T, PD, PE> {
     src_index: u16,
     target_index: u16,
     target_port: Port,
-    event_push: EventEmitter<PE>,
+    event_push: EventSender<PE>,
     inner: PD,
     _ph: std::marker::PhantomData<T>,
 }
 
 impl<T, PD, PE> EventEosBatchPush<T, PD, PE> {
     pub fn new(
-        worker_index: u16, target_worker: u16, target_port: Port, event_push: EventEmitter<PE>, inner: PD,
+        worker_index: u16, target_worker: u16, target_port: Port, event_push: EventSender<PE>, inner: PD,
     ) -> Self {
         Self {
             src_index: worker_index,

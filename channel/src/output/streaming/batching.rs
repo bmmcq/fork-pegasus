@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
 use crate::abort::AbortHandle;
-use crate::buffer::pool::{BufferPool, RoBatch, ScopedBufferPool, SharedScopedBufferPool, WoBatch};
+use crate::buffer::pool::{BufferPool, RoBatch, ScopedBufferPool, WoBatch};
 use crate::buffer::{BoundedBuffer, BufferPtr, ScopeBuffer};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
@@ -183,15 +181,17 @@ impl<T, P> MultiScopeBufStreamPush<T, P> {
             pinned: None,
             batches: vec![],
             send_stat: AHashMap::new(),
-            scope_buffers: ScopeBuffer::new(ch_info.batch_size, ch_info.batch_capacity, ch_info.max_scope_slots),
+            scope_buffers: ScopeBuffer::new(
+                ch_info.batch_size,
+                ch_info.batch_capacity,
+                ch_info.max_scope_slots,
+            ),
             ch_info,
             inner,
         }
     }
 
-    pub fn with_pool(
-        ch_info: ChannelInfo, worker_index: u16, pool: ScopedBufferPool<T>, inner: P,
-    ) -> Self {
+    pub fn with_pool(ch_info: ChannelInfo, worker_index: u16, pool: ScopedBufferPool<T>, inner: P) -> Self {
         Self {
             src_index: worker_index,
             ch_info,

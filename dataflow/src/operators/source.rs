@@ -2,6 +2,7 @@ use std::any::Any;
 
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
+use pegasus_channel::event::emitter::EventEmitter;
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_channel::output::handle::MiniScopeStreamSinkFactory;
@@ -45,7 +46,7 @@ where
             }
         } else if let Some(extern_data) = self.extern_data.take() {
             let mut session = output_proxy
-                .new_session(&Tag::Null)
+                .new_session(&Tag::Null)?
                 .expect("new session expect not none;");
             match session.give_iterator(extern_data) {
                 Ok(_) => {
@@ -109,7 +110,7 @@ where
     Iter::Item: Data,
     Iter::IntoIter: Send + 'static,
 {
-    fn build(self: Box<Self>) -> Box<dyn Operator> {
+    fn build(self: Box<Self>, _event_emitter: EventEmitter) -> Box<dyn Operator> {
         Box::new(SourceOperator {
             extern_data: Some(self.extern_data.into_iter()),
             _inputs: vec![],

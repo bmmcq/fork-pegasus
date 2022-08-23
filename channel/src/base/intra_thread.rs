@@ -26,12 +26,13 @@ pub struct ThreadPush<T> {
     is_close: bool,
     queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
     push_state: UnsafeRcPtr<RefCell<u32>>,
-    pull_state: UnsafeRcPtr<RefCell<bool>>, 
+    pull_state: UnsafeRcPtr<RefCell<bool>>,
 }
 
 impl<T> ThreadPush<T> {
     fn new(
-        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>, pull_state: UnsafeRcPtr<RefCell<bool>>
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>,
+        pull_state: UnsafeRcPtr<RefCell<bool>>,
     ) -> Self {
         ThreadPush { id, is_close: false, queue, push_state, pull_state }
     }
@@ -44,8 +45,8 @@ impl<T: Send> Push<T> for ThreadPush<T> {
             if *self.pull_state.borrow() {
                 self.queue.borrow_mut().push_back(msg);
                 Ok(())
-            } else { 
-               Err(PushError::Disconnected) 
+            } else {
+                Err(PushError::Disconnected)
             }
         } else {
             let error = PushError::AlreadyClosed;
@@ -67,12 +68,13 @@ pub struct ThreadPull<T> {
     pub id: ChannelId,
     queue: UnsafeRcPtr<RefCell<VecDeque<T>>>,
     push_state: UnsafeRcPtr<RefCell<u32>>,
-    pull_state: UnsafeRcPtr<RefCell<bool>>
+    pull_state: UnsafeRcPtr<RefCell<bool>>,
 }
 
 impl<T> ThreadPull<T> {
     fn new(
-        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>, pull_state: UnsafeRcPtr<RefCell<bool>>
+        id: ChannelId, queue: UnsafeRcPtr<RefCell<VecDeque<T>>>, push_state: UnsafeRcPtr<RefCell<u32>>,
+        pull_state: UnsafeRcPtr<RefCell<bool>>,
     ) -> Self {
         ThreadPull { id, queue, push_state, pull_state }
     }
@@ -100,7 +102,7 @@ impl<T: Send> Pull<T> for ThreadPull<T> {
     }
 }
 
-impl <T> Drop for ThreadPull<T> {
+impl<T> Drop for ThreadPull<T> {
     fn drop(&mut self) {
         *self.pull_state.borrow_mut() = false;
     }
@@ -110,7 +112,10 @@ pub fn pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPull<T>) {
     let queue = UnsafeRcPtr::new(RefCell::new(VecDeque::new()));
     let push_state = UnsafeRcPtr::new(RefCell::new(1));
     let pull_state = UnsafeRcPtr::new(RefCell::new(true));
-    (ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()), ThreadPull::new(id, queue, push_state, pull_state))
+    (
+        ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()),
+        ThreadPull::new(id, queue, push_state, pull_state),
+    )
 }
 
 pub fn binary_pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPush<T>, ThreadPull<T>) {
@@ -120,9 +125,9 @@ pub fn binary_pipeline<T>(id: ChannelId) -> (ThreadPush<T>, ThreadPush<T>, Threa
     (
         ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()),
         ThreadPush::new(id, queue.clone(), push_state.clone(), pull_state.clone()),
-        ThreadPull::new(id, queue, push_state, pull_state)
+        ThreadPull::new(id, queue, push_state, pull_state),
     )
-} 
+}
 
 #[cfg(test)]
 mod test {

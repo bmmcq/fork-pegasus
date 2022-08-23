@@ -5,7 +5,7 @@ use std::sync::Arc;
 use nohash_hasher::IntMap;
 use pegasus_channel::alloc::ChannelKind;
 use pegasus_channel::data::Data;
-use pegasus_channel::event::emitter::BaseEventEmitter;
+use pegasus_channel::event::emitter::EventEmitter;
 use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::unify::EnumStreamBufPush;
 use pegasus_channel::{ChannelId, ChannelInfo};
@@ -13,9 +13,9 @@ use pegasus_common::config::JobConfig;
 use pegasus_common::tag::Tag;
 
 use crate::channel::ChannelAllocator;
-use crate::context::{ScopeContext, ScopeContextWithOps};
+use crate::context::{ContextKind, ScopeContext, ScopeContextWithOps};
 use crate::errors::JobBuildError;
-use crate::operators::builder::{Builder, OperatorBuilder};
+use crate::operators::builder::{Builder, OperatorInBuild};
 use crate::operators::OperatorInfo;
 use crate::plan::DataFlowPlan;
 
@@ -26,7 +26,7 @@ pub struct DataflowBuilder {
     pub(crate) config: Arc<JobConfig>,
     scope_ctxes: Rc<RefCell<IntMap<u16, ScopeContextWithOps>>>,
     channel_index: Rc<RefCell<usize>>,
-    operators: Rc<RefCell<Vec<OperatorBuilder>>>,
+    operators: Rc<RefCell<Vec<OperatorInBuild>>>,
     channel_alloc: Rc<RefCell<ChannelAllocator>>,
 }
 
@@ -79,19 +79,33 @@ impl DataflowBuilder {
                 .expect("scope context not found")
                 .add_op(info.index);
         }
-        let mut op_builder = OperatorBuilder::new(info, op);
+        let mut op_builder = OperatorInBuild::new(info, op);
         op_builder.dependent_on(origin_op_index);
         operators_br.push(op_builder);
+    }
+
+    pub(crate) fn feedback_to(&self, op_index: usize, feedback: Box<dyn AnyInput>) {
+        let mut op_br = self.operators.borrow_mut();
+        op_br[op_index].add_feedback(feedback)
     }
 
     pub(crate) fn op_size(&self) -> usize {
         self.operators.borrow().len()
     }
 
-    pub(crate) fn add_scope_cxt(&self, ctx: ScopeContext) {
-        self.scope_ctxes
-            .borrow_mut()
-            .insert(ctx.id(), ScopeContextWithOps::new(ctx));
+    pub(crate) fn add_scope_cxt(
+        &self, parent: Option<ScopeContext>, scope_level: u8, kind: ContextKind,
+    ) -> ScopeContext {
+        let mut ctx_br = self.scope_ctxes.borrow_mut();
+        let id = ctx_br.len() as u16;
+
+        let ctx = ScopeContext::new(id, scope_level, kind);
+        if let Some(p) = parent {
+            let p_ctx = ctx_br.get_mut(&p.id()).expect("");
+            p_ctx.add_child_scope(ctx.id());
+        }
+        ctx_br.insert(ctx.id(), ScopeContextWithOps::new(ctx));
+        ctx
     }
 
     pub(crate) fn new_channel_id(&self) -> ChannelId {
@@ -101,7 +115,7 @@ impl DataflowBuilder {
         (self.config.job_id(), *index as u16 - 1).into()
     }
 
-    pub(crate) fn get_event_emitter(&self) -> BaseEventEmitter {
+    pub(crate) fn get_event_emitter(&self) -> EventEmitter {
         let ch_br = self.channel_alloc.borrow_mut();
         ch_br
             .get_event_emitter(self.worker_index)
@@ -150,8 +164,9 @@ impl DataflowBuilder {
         let mut ops = self.operators.borrow_mut();
         ops.sort_by(|a, b| a.info().index.cmp(&b.info().index));
         let mut operators = Vec::with_capacity(ops.len());
+        let event_emitter = self.get_event_emitter();
         for o in ops.drain(..) {
-            let op = o.build();
+            let op = o.build(event_emitter.clone());
             assert_eq!(operators.len(), op.info().index as usize);
             operators.push(op);
         }

@@ -1,4 +1,4 @@
-use std::collections::{VecDeque};
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 use pegasus_common::config::JobServerConfig;
@@ -9,7 +9,7 @@ use crate::base::{BasePull, SimpleDecoder};
 use crate::buffer::decoder::{BatchDecoder, MultiScopeBatchDecoder};
 use crate::buffer::pool::{BufferPool, ScopedBufferPool, SharedScopedBufferPool};
 use crate::data::{Data, MiniScopeBatch};
-use crate::event::emitter::{BaseEventCollector, BaseEventEmitter};
+use crate::event::emitter::{EventCollector, EventEmitter};
 use crate::input::proxy::{InputProxy, MultiScopeInputProxy};
 use crate::input::AnyInput;
 use crate::output::batched::evented::EventEosBatchPush;
@@ -83,6 +83,7 @@ impl<T: Data> MultiScopeChannel<T> {
     }
 }
 
+#[allow(dead_code)]
 pub struct BinaryChannel<T: Data> {
     pub ch_info: ChannelInfo,
     pub tag: Tag,
@@ -105,14 +106,13 @@ where
 pub fn alloc_binary_buf_pipeline<T>(
     worker_index: u16, tag: Tag, ch_info: ChannelInfo,
 ) -> (EnumStreamBufPush<T>, EnumStreamBufPush<T>, BasePull<MiniScopeBatch<T>>)
-    where
-        T: Data + Encode,
+where
+    T: Data + Encode,
 {
     let (left, right, pull) = crate::base::alloc_binary_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
     let (left, right) = EnumStreamBufPush::binary_pipeline(worker_index, ch_info, tag, left, right);
     (left, right, pull)
 }
-
 
 pub fn alloc_multi_scope_buf_pipeline<T>(
     worker_index: u16, ch_info: ChannelInfo,
@@ -125,8 +125,11 @@ where
     (push, pull)
 }
 
-pub fn alloc_binary_multi_scope_buf_pipeline<T>(worker_index: u16, ch_info: ChannelInfo) -> (EnumStreamBufPush<T>, EnumStreamBufPush<T>, BaseBatchPull<T>)
-    where T: Data
+pub fn alloc_binary_multi_scope_buf_pipeline<T>(
+    worker_index: u16, ch_info: ChannelInfo,
+) -> (EnumStreamBufPush<T>, EnumStreamBufPush<T>, BaseBatchPull<T>)
+where
+    T: Data,
 {
     let (left, right, pull) = crate::base::alloc_binary_pipeline::<MiniScopeBatch<T>>(ch_info.ch_id);
     let (left, right) = EnumStreamBufPush::binary_multi_scope_pipeline(worker_index, ch_info, left, right);
@@ -134,7 +137,7 @@ pub fn alloc_binary_multi_scope_buf_pipeline<T>(worker_index: u16, ch_info: Chan
 }
 
 pub async fn alloc_buf_exchange<T>(
-    tag: Tag, ch_info: ChannelInfo, config: &JobServerConfig, event_emitters: &Vec<BaseEventEmitter>,
+    tag: Tag, ch_info: ChannelInfo, config: &JobServerConfig, event_emitters: &Vec<EventEmitter>,
 ) -> Result<VecDeque<Channel<T>>, IOError>
 where
     T: Data,
@@ -224,7 +227,7 @@ where
 }
 
 pub async fn alloc_multi_scope_buf_exchange<T>(
-    ch_info: ChannelInfo, config: &JobServerConfig, event_emitters: &Vec<BaseEventEmitter>,
+    ch_info: ChannelInfo, config: &JobServerConfig, event_emitters: &Vec<EventEmitter>,
 ) -> Result<VecDeque<MultiScopeChannel<T>>, IOError>
 where
     T: Data,
@@ -320,7 +323,7 @@ where
 
 pub async fn alloc_event_channel(
     ch_id: ChannelId, config: &JobServerConfig,
-) -> Result<Vec<(BaseEventEmitter, BaseEventCollector)>, IOError> {
+) -> Result<Vec<(EventEmitter, EventCollector)>, IOError> {
     let this_server_id = ServerInstance::global().get_id();
     let mut chs = Vec::new();
     if let Some(range) = config.get_peers_on_server(this_server_id) {
@@ -336,8 +339,8 @@ pub async fn alloc_event_channel(
             crate::base::alloc_cluster_exchange(ch_id, config, decoders).await?
         };
         for (push, pull) in list {
-            let push = BaseEventEmitter::new(push);
-            let pull = BaseEventCollector::new(pull);
+            let push = EventEmitter::new(push);
+            let pull = EventCollector::new(pull);
             chs.push((push, pull));
         }
     }

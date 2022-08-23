@@ -8,13 +8,13 @@ use crate::base::{BasePull, BasePush};
 use crate::error::{PullError, PushError};
 use crate::{Pull, Push};
 
-pub struct EventEmitter<P> {
+pub struct EventSender<P> {
     tx: UnsafeRcPtr<RefCell<Vec<P>>>,
 }
 
-impl<P> EventEmitter<P> {
+impl<P> EventSender<P> {
     pub fn new(tx: Vec<P>) -> Self {
-        EventEmitter { tx: UnsafeRcPtr::new(RefCell::new(tx)) }
+        EventSender { tx: UnsafeRcPtr::new(RefCell::new(tx)) }
     }
 
     pub fn peers(&self) -> usize {
@@ -22,15 +22,15 @@ impl<P> EventEmitter<P> {
     }
 }
 
-impl<P> Clone for EventEmitter<P> {
+impl<P> Clone for EventSender<P> {
     fn clone(&self) -> Self {
         Self { tx: self.tx.clone() }
     }
 }
 
-pub type BaseEventEmitter = EventEmitter<BasePush<Event>>;
+pub type EventEmitter = EventSender<BasePush<Event>>;
 
-impl<P> EventEmitter<P>
+impl<P> EventSender<P>
 where
     P: Push<Event>,
 {
@@ -68,20 +68,20 @@ where
     }
 }
 
-pub struct EventCollector<P> {
+pub struct EventReceiver<P> {
     rx: P,
     received: VecDeque<Event>,
 }
 
-impl<P> EventCollector<P> {
+impl<P> EventReceiver<P> {
     pub fn new(rx: P) -> Self {
-        EventCollector { rx, received: VecDeque::new() }
+        EventReceiver { rx, received: VecDeque::new() }
     }
 }
 
-pub type BaseEventCollector = EventCollector<BasePull<Event>>;
+pub type EventCollector = EventReceiver<BasePull<Event>>;
 
-impl<P> EventCollector<P>
+impl<P> EventReceiver<P>
 where
     P: Pull<Event>,
 {

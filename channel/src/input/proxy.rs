@@ -89,10 +89,9 @@ where
     }
 }
 
-
 impl<T> AsAny for MultiScopeInputProxy<T>
-    where
-        T: Data,
+where
+    T: Data,
 {
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -102,7 +101,6 @@ impl<T> AsAny for MultiScopeInputProxy<T>
         self
     }
 }
-
 
 impl<T> Input for MultiScopeInputProxy<T>
 where

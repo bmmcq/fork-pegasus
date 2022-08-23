@@ -95,6 +95,36 @@ impl Tag {
             .expect("can't current on root tag")
     }
 
+    pub fn split(self) -> Option<(Tag, u32)> {
+        match self {
+            Tag::Null => None,
+            Tag::One(v) => Some((Tag::Null, v)),
+            Tag::Two(a, b) => Some((Tag::One(a), b)),
+            Tag::Three(a, b, c) => Some((Tag::Two(a, b), c)),
+            Tag::Spilled(mut vec) => {
+                let len = vec.len();
+                if len > 4 {
+                    let v = vec.pop().expect("vec len at least 4");
+                    Some((Tag::Spilled(vec), v))
+                } else if len == 4 {
+                    let v = vec.pop().expect("vec len equals to 4");
+                    Some((Tag::Three(vec[0], vec[1], vec[2]), v))
+                } else if len == 3 {
+                    let v = vec.pop().expect("vec len equals to 3");
+                    Some((Tag::Two(vec[0], vec[1]), v))
+                } else if len == 2 {
+                    let v = vec.pop().expect("vec len equals to 2");
+                    Some((Tag::One(vec[0]), v))
+                } else if len == 1 {
+                    let v = vec.pop().expect("vec len equals to 1");
+                    Some((Tag::Null, v))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
     #[inline]
     pub fn to_parent(&self) -> Option<Tag> {
         match self {

@@ -1,11 +1,10 @@
 use std::ops::{Deref, DerefMut};
 use std::ptr::NonNull;
-use std::sync::Arc;
 
 use ahash::AHashMap;
 use pegasus_common::tag::Tag;
 
-use crate::buffer::pool::{LocalScopedBufferPool, ScopedBufferPool, SharedScopedBufferPool};
+use crate::buffer::pool::{LocalScopedBufferPool, ScopedBufferPool};
 
 pub mod decoder;
 pub mod pool;

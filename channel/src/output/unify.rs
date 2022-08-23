@@ -1,11 +1,11 @@
 use std::cell::RefCell;
+
 use pegasus_common::rc::UnsafeRcPtr;
 use pegasus_common::tag::Tag;
 use pegasus_server::Encode;
 
 use crate::abort::AbortHandle;
 use crate::base::{BasePull, BasePush};
-use crate::buffer::BoundedBuffer;
 use crate::buffer::pool::{BufferPool, LocalScopedBufferPool, ScopedBufferPool};
 use crate::data::{Data, MiniScopeBatch};
 use crate::eos::Eos;
@@ -44,35 +44,43 @@ where
         Self::Pipeline(push)
     }
 
-    pub fn binary_pipeline(worker_index: u16, ch_info: ChannelInfo, tag: Tag, left: BaseBatchPush<T>, right: BaseBatchPush<T>) -> (Self, Self) {
+    pub fn binary_pipeline(
+        worker_index: u16, ch_info: ChannelInfo, tag: Tag, left: BaseBatchPush<T>, right: BaseBatchPush<T>,
+    ) -> (Self, Self) {
         let pool = BufferPool::new(ch_info.batch_size, ch_info.batch_capacity);
         let left = BufStreamPush::with_pool(ch_info, worker_index, tag.clone(), pool.clone(), left);
         let right = BufStreamPush::with_pool(ch_info, worker_index, tag, pool, right);
         (Self::Pipeline(left), Self::Pipeline(right))
     }
 
-    pub fn multi_scope_pipeline(
-        worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>,
-    ) -> Self {
+    pub fn multi_scope_pipeline(worker_index: u16, ch_info: ChannelInfo, push: BaseBatchPush<T>) -> Self {
         let push = MultiScopeBufStreamPush::new(ch_info, worker_index, push);
         Self::MultiScopePipeline(push)
     }
 
     pub fn binary_multi_scope_pipeline(
-        worker_index: u16, ch_info: ChannelInfo, left: BaseBatchPush<T>, right: BaseBatchPush<T>
+        worker_index: u16, ch_info: ChannelInfo, left: BaseBatchPush<T>, right: BaseBatchPush<T>,
     ) -> (Self, Self) {
-        let pool = UnsafeRcPtr::new(RefCell::new(
-            LocalScopedBufferPool::new(
-                ch_info.batch_size,
-                ch_info.batch_capacity,
-                ch_info.max_scope_slots,
+        let pool = UnsafeRcPtr::new(RefCell::new(LocalScopedBufferPool::new(
+            ch_info.batch_size,
+            ch_info.batch_capacity,
+            ch_info.max_scope_slots,
         )));
 
-        let left = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, ScopedBufferPool::LocalShared(pool.clone()), left);
-        let right = MultiScopeBufStreamPush::with_pool(ch_info, worker_index, ScopedBufferPool::LocalShared(pool), right);
+        let left = MultiScopeBufStreamPush::with_pool(
+            ch_info,
+            worker_index,
+            ScopedBufferPool::LocalShared(pool.clone()),
+            left,
+        );
+        let right = MultiScopeBufStreamPush::with_pool(
+            ch_info,
+            worker_index,
+            ScopedBufferPool::LocalShared(pool),
+            right,
+        );
         (Self::MultiScopePipeline(left), Self::MultiScopePipeline(right))
     }
-
 }
 
 impl<T: Data> Pinnable for EnumStreamBufPush<T> {
@@ -199,5 +207,3 @@ impl<T: Data> AbortHandle for EnumStreamBufPush<T> {
         }
     }
 }
-
-

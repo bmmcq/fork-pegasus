@@ -16,7 +16,7 @@
 use pegasus_common::tag::Tag;
 
 /// Describing how data's scope will be changed when being send from an output port.
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum ScopeDelta {
     /// The scope won't be changed.
     None,
@@ -38,15 +38,9 @@ impl ScopeDelta {
     pub fn evolve(&self, tag: &Tag) -> Tag {
         match self {
             ScopeDelta::None => tag.clone(),
-            ScopeDelta::ToSibling => {
-               tag.advance()
-            }
-            ScopeDelta::ToChild => {
-                Tag::inherit(tag, 0)
-            }
-            ScopeDelta::ToParent => {
-                tag.to_parent_uncheck()
-            }
+            ScopeDelta::ToSibling => tag.advance(),
+            ScopeDelta::ToChild => Tag::inherit(tag, 0),
+            ScopeDelta::ToParent => tag.to_parent_uncheck(),
         }
     }
 }

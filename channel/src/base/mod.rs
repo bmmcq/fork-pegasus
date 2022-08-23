@@ -79,7 +79,9 @@ pub fn alloc_local_exchange<T: Data>(peers: u16, ch_id: ChannelId) -> Vec<(Vec<B
     chs
 }
 
-pub fn alloc_binary_local_exchange<T: Data>(peers: u16, ch_id: ChannelId) -> Vec<(Vec<BasePush<T>>, Vec<BasePush<T>>, BasePull<T>)> {
+pub fn alloc_binary_local_exchange<T: Data>(
+    peers: u16, ch_id: ChannelId,
+) -> Vec<(Vec<BasePush<T>>, Vec<BasePush<T>>, BasePull<T>)> {
     assert!(peers > 0);
     let mut sends = Vec::with_capacity(peers as usize);
     let mut recvs = Vec::with_capacity(peers as usize);
@@ -112,7 +114,6 @@ pub fn alloc_binary_local_exchange<T: Data>(peers: u16, ch_id: ChannelId) -> Vec
         left_pushes.push(BasePush::IntraProcess(left));
         let right = intra_process::IntraProcessPush::new(i as u16, ch_id, send.clone());
         right_pushes.push(BasePush::IntraProcess(right));
-
     }
 
     let pull = BasePull::IntraProcess(intra_process::IntraProcessPull::new(ch_id, last));
@@ -213,13 +214,12 @@ where
     Ok(chs)
 }
 
-
 pub async fn alloc_binary_cluster_exchange<T, D>(
     ch_id: ChannelId, config: &JobServerConfig, decoders: Vec<D>,
 ) -> Result<Vec<(Vec<BasePush<T>>, Vec<BasePush<T>>, BasePull<T>)>, IOError>
-    where
-        T: Data + Decode,
-        D: Decoder<Item = T> + Send + 'static,
+where
+    T: Data + Decode,
+    D: Decoder<Item = T> + Send + 'static,
 {
     let peers = config.total_peers();
     assert!(peers > 1);

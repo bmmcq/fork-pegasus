@@ -21,7 +21,7 @@ use crate::block::{BlockEntry, BlockHandle, BlockKind};
 use crate::data::Data;
 use crate::eos::Eos;
 use crate::error::PushError;
-use crate::output::delta::{ScopeDelta};
+use crate::output::delta::ScopeDelta;
 use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::output::OutputInfo;
 
@@ -108,7 +108,7 @@ where
 }
 
 pub trait MiniScopeStreamSinkFactory<D, T> {
-    fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, T>>;
+    fn new_session(&mut self, tag: &Tag) -> Result<Option<MiniScopeStreamSink<D, T>>, PushError>;
 }
 
 pub struct OutputHandle<D, T> {
@@ -119,7 +119,7 @@ pub struct OutputHandle<D, T> {
     info: OutputInfo,
     in_tag: Tag,
     out_tag: Tag,
-    _scope_delta: ScopeDelta,
+    scope_delta: ScopeDelta,
     send_buffer: Option<BlockEntry<D>>,
     output: T,
 }
@@ -139,13 +139,15 @@ where
             worker_index,
             is_closed: false,
             is_aborted: false,
-            _scope_delta: delta,
+            scope_delta: delta,
             send_buffer: None,
             output,
         }
     }
 
-    fn notify_end(&mut self, end: Eos) -> Result<(), PushError> {
+    fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
+        let tag = self.scope_delta.evolve(&end.tag);
+        end.tag = tag;
         assert_eq!(self.out_tag, end.tag);
         assert!(self.send_buffer.is_none());
         self.output.notify_end(end)
@@ -305,10 +307,18 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, Self>> {
-        assert_eq!(tag, &self.in_tag);
-        // self.pin(&self.out_tag).ok();
-        Some(MiniScopeStreamSink::new(self.is_aborted, self.out_tag.clone(), self))
+    fn new_session(&mut self, tag: &Tag) -> Result<Option<MiniScopeStreamSink<D, Self>>, PushError> {
+        if matches!(self.scope_delta, ScopeDelta::ToParent) {
+            assert_eq!(tag.to_parent_uncheck(), self.in_tag.to_parent_uncheck());
+        } else {
+            assert_eq!(tag, &self.in_tag);
+        }
+
+        if self.send_buffer.is_none() {
+            Ok(Some(MiniScopeStreamSink::new(self.is_aborted, self.out_tag.clone(), self)))
+        } else {
+            Ok(None)
+        }
     }
 }
 
@@ -507,18 +517,13 @@ where
     D: Data,
     T: StreamPush<D> + Pinnable + 'static,
 {
-    fn new_session(&mut self, tag: &Tag) -> Option<MiniScopeStreamSink<D, Self>> {
+    fn new_session(&mut self, tag: &Tag) -> Result<Option<MiniScopeStreamSink<D, Self>>, PushError> {
         let push_tag = self.scope_delta.evolve(tag);
-        assert!(!self.send_buffer.contains_key(&push_tag));
-        if !self
-            .output
-            .pin(&push_tag)
-            .expect("fail to pin, call 'unpin' first;")
-        {
-            None
-        } else {
+        if self.output.pin(&push_tag)? {
             let is_aborted = self.aborts.contains(tag);
-            Some(MiniScopeStreamSink::new(is_aborted, push_tag, self))
+            Ok(Some(MiniScopeStreamSink::new(is_aborted, push_tag, self)))
+        } else {
+            Ok(None)
         }
     }
 }

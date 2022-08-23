@@ -15,8 +15,8 @@ pub struct ScopeContext {
 }
 
 impl ScopeContext {
-    pub fn new(id: u16, level: u8) -> Self {
-        Self { id, level, kind: ContextKind::Flat }
+    pub fn new(id: u16, level: u8, kind: ContextKind) -> Self {
+        Self { id, level, kind }
     }
 
     pub fn new_repeat(id: u16, level: u8) -> Self {

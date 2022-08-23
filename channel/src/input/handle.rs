@@ -189,7 +189,7 @@ where
 {
     pub fn check_ready(&mut self) -> Result<bool, PullError> {
         if self.is_exhaust {
-            return Ok(false);
+            return Ok(!self.outstanding.is_empty());
         }
 
         if self.outstanding.is_block() {
