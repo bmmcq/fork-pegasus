@@ -231,4 +231,4 @@ where
     }
 }
 
-mod switch_unary;
+pub mod switch_unary;

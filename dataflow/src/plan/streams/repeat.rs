@@ -51,7 +51,7 @@ where
             + 'static,
     {
         self.inner
-            ._switch_unary(self.times, name, construct)
+            ._switch_unary(self.times, name, self.leave, construct)
             .await
     }
 }

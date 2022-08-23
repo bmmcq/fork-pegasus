@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
 use pegasus_channel::event::emitter::EventEmitter;
@@ -6,10 +8,13 @@ use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::handle::MiniScopeStreamSink;
 use pegasus_channel::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use pegasus_channel::output::AnyOutput;
+use pegasus_common::downcast::AsAny;
 use pegasus_common::tag::Tag;
 
 use crate::errors::JobExecError;
+use crate::operators::builder::{BuildCommon, Builder};
 use crate::operators::consume::MiniScopeBatchStream;
+use crate::operators::repeat::switch::RepeatSwitchOperatorBuilder;
 use crate::operators::unary::unary_consume;
 use crate::operators::{MultiScopeOutput, Operator, State};
 
@@ -98,5 +103,67 @@ where
         if let Err(e) = self.outputs[0].close() {
             error!("repeat switch operator close fail: {}", e);
         }
+    }
+}
+
+pub struct RepeatSwitchUnaryOperatorBuilder<I, O, F> {
+    inner: RepeatSwitchOperatorBuilder<I>,
+    unary: F,
+    _ph: std::marker::PhantomData<O>,
+}
+
+impl<I, O, F> RepeatSwitchUnaryOperatorBuilder<I, O, F> {
+    pub fn new(times: u32, common: BuildCommon, unary: F) -> Self {
+        Self {
+            inner: RepeatSwitchOperatorBuilder::new(common, times),
+            unary,
+            _ph: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<I, O, F> AsAny for RepeatSwitchUnaryOperatorBuilder<I, O, F>
+where
+    I: Data,
+    O: Data,
+    F: Send + 'static,
+{
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+
+    fn as_any_ref(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl<I, O, F> Builder for RepeatSwitchUnaryOperatorBuilder<I, O, F>
+where
+    I: Data,
+    O: Data,
+    F: FnMut(
+            &mut MiniScopeBatchStream<I>,
+            &mut MiniScopeStreamSink<O, MultiScopeOutput<O>>,
+        ) -> Result<(), JobExecError>
+        + Send
+        + 'static,
+{
+    fn build(mut self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator> {
+        let feedback = self
+            .inner
+            .feedback
+            .take()
+            .expect("feedback not found;");
+        let inputs = [self.inner.enter_loop, feedback];
+        let outputs = [self.inner.leave.build(), self.inner.reenter.build()];
+        Box::new(RepeatSwitchUnaryOperator {
+            worker_index: self.inner.worker_index,
+            times: self.inner.times,
+            event_emitter: event_emitter,
+            inputs,
+            outputs,
+            unary: self.unary,
+            _ph: std::marker::PhantomData,
+        })
     }
 }

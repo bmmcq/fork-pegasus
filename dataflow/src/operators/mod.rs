@@ -33,8 +33,11 @@ impl std::fmt::Display for OperatorInfo {
 }
 
 impl OperatorInfo {
-    pub fn new(name: &str, index: u16, scope_ctx: ScopeContext) -> Self {
-        OperatorInfo { name: name.to_owned(), index, scope_ctx }
+    pub fn new<T>(name: T, index: u16, scope_ctx: ScopeContext) -> Self
+    where
+        T: Into<String>,
+    {
+        OperatorInfo { name: name.into(), index, scope_ctx }
     }
 }
 

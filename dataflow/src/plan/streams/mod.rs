@@ -14,6 +14,7 @@ use crate::context::{ContextKind, ScopeContext};
 use crate::errors::{JobBuildError, JobExecError};
 use crate::operators::builder::BuildCommon;
 use crate::operators::consume::MiniScopeBatchStream;
+use crate::operators::repeat::switch::switch_unary::RepeatSwitchUnaryOperatorBuilder;
 use crate::operators::repeat::switch::RepeatSwitchOperatorBuilder;
 use crate::operators::source::SourceOperatorBuilder;
 use crate::operators::unary::{UnaryImpl, UnaryOperatorBuilder};
@@ -153,7 +154,7 @@ impl<D: Data> Stream<D> {
     }
 
     async fn _switch_unary<O, CF, F>(
-        self, _times: u32, _name: &str, _construct: CF,
+        self, times: u32, name: &str, leave: StreamBuilder<D>, construct: CF,
     ) -> Result<RepeatStream<O>, JobBuildError>
     where
         O: Data,
@@ -162,9 +163,34 @@ impl<D: Data> Stream<D> {
             + Send
             + 'static,
     {
-        // alloc binary channel : binary pipeline, binary exchange, with independent flow control;
-        // alloc forward output for data to leave loop;
-        todo!()
+        let new_op_index = self.builder.op_size() as u16;
+        let ch_info = self.new_channel_info((new_op_index, 0).into());
+        let (loop_input_push, loop_input) = self
+            .builder
+            .alloc::<D>(self.tag.clone(), ch_info, self.channel)
+            .await?;
+        self.src.set_push(loop_input_push);
+        let worker_index = self.builder.worker_index;
+
+        let scope_level = self.src.get_outbound_scope_level();
+        assert_eq!(scope_level, leave.get_outbound_scope_level() + 1);
+        let repeat_output =
+            MultiScopeStreamBuilder::<O>::new(worker_index, scope_level, (new_op_index, 1).into());
+        let build_common = BuildCommon {
+            worker_index,
+            inputs: smallvec![loop_input],
+            outputs: smallvec![
+                Box::new(leave) as Box<dyn OutputBuilder>,
+                Box::new(repeat_output.clone()) as Box<dyn OutputBuilder>
+            ],
+        };
+        let unary = construct();
+        let op_build = RepeatSwitchUnaryOperatorBuilder::new(times, build_common, unary);
+        let info = OperatorInfo::new(format!("switch_{}", name), new_op_index, self.scope_ctx);
+        self.builder
+            .add_operator(self.src_op_index, info, op_build);
+        let feedback_port = (new_op_index, 1).into();
+        Ok(RepeatStream::new(self.scope_ctx, repeat_output, feedback_port, self.builder))
     }
 
     fn new_channel_info(&self, target_port: Port) -> ChannelInfo {
