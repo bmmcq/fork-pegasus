@@ -16,7 +16,7 @@ use pegasus_channel::ChannelType;
 use pegasus_common::downcast::AsAny;
 use pegasus_common::tag::Tag;
 
-use super::{MultiScopeOutput, Operator};
+use super::{MultiScopeOutput, OperatorTrait};
 use crate::errors::JobExecError;
 use crate::operators::builder::{BuildCommon, Builder};
 use crate::operators::consume::MiniScopeBatchStream;
@@ -231,7 +231,7 @@ impl<F> UnaryOperator<F> {
     }
 }
 
-impl<F> Operator for UnaryOperator<F>
+impl<F> OperatorTrait for UnaryOperator<F>
 where
     F: UnaryShape,
 {
@@ -315,7 +315,7 @@ impl<F> Builder for UnaryOperatorBuilder<F>
 where
     F: UnaryShape,
 {
-    fn build(self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator> {
+    fn build(self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn OperatorTrait> {
         let output = self.output.build();
         Box::new(UnaryOperator::new(self.worker_index, event_emitter, self.input, output, self.func))
     }

@@ -16,7 +16,7 @@ use pegasus_common::tag::Tag;
 
 use crate::errors::JobExecError;
 use crate::operators::builder::{BuildCommon, Builder};
-use crate::operators::{MultiScopeOutput, Operator, Output, State};
+use crate::operators::{MultiScopeOutput, OperatorTrait, Output, State};
 
 pub struct RepeatSwitchOperator<D> {
     #[allow(dead_code)]
@@ -29,7 +29,7 @@ pub struct RepeatSwitchOperator<D> {
     _ph: std::marker::PhantomData<D>,
 }
 
-impl<D> Operator for RepeatSwitchOperator<D>
+impl<D> OperatorTrait for RepeatSwitchOperator<D>
 where
     D: Data,
 {
@@ -215,7 +215,7 @@ where
         self.feedback = Some(feedback);
     }
 
-    fn build(mut self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator> {
+    fn build(mut self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn OperatorTrait> {
         let feedback = self
             .feedback
             .take()
@@ -231,4 +231,4 @@ where
     }
 }
 
-pub mod switch_unary;
+pub mod unary;

@@ -47,7 +47,8 @@ pub enum State {
     Finished,
 }
 
-pub trait Operator: Send + 'static {
+/// Abstract Operator; OperatorTrait
+pub trait OperatorTrait: Send + 'static {
     fn inputs(&self) -> &[Box<dyn AnyInput>];
 
     fn outputs(&self) -> &[Box<dyn AnyOutput>];
@@ -60,20 +61,30 @@ pub trait Operator: Send + 'static {
 }
 
 #[allow(dead_code)]
-pub struct OperatorFlow {
+pub struct Operator {
     is_finished: bool,
     info: OperatorInfo,
-    core: Option<Box<dyn Operator>>,
+    core: Option<Box<dyn OperatorTrait>>,
     dependencies: SmallVec<[usize; 2]>,
     dependents: SmallVec<[usize; 2]>,
+    sub_index: Option<usize>,
+    parent_index: Option<usize>,
 }
 
-impl OperatorFlow {
-    pub fn new(
-        info: OperatorInfo, op: Box<dyn Operator>, dependencies: SmallVec<[usize; 2]>,
+impl Operator {
+    pub(crate) fn new(
+        info: OperatorInfo, op: Box<dyn OperatorTrait>, dependencies: SmallVec<[usize; 2]>,
         dependents: SmallVec<[usize; 2]>,
     ) -> Self {
-        Self { is_finished: true, info, core: Some(op), dependencies, dependents }
+        Self { is_finished: false, info, core: Some(op), dependencies, dependents, sub_index: None, parent_index: None }
+    }
+
+    pub(crate) fn add_sub(&mut self, index: usize) {
+        self.sub_index = Some(index);
+    }
+
+    pub(crate) fn add_parent(&mut self, index: usize) {
+        self.parent_index = Some(index);
     }
 
     pub fn info(&self) -> &OperatorInfo {
@@ -86,6 +97,14 @@ impl OperatorFlow {
 
     pub fn dependencies(&self) -> &[usize] {
         self.dependencies.as_slice()
+    }
+
+    pub fn get_parent(&self) -> Option<usize> {
+        self.parent_index
+    }
+
+    pub fn get_sub(&self) -> Option<usize> {
+        self.sub_index
     }
 
     pub fn accept_event(&mut self, event: Event) -> Result<(), JobExecError> {
@@ -121,7 +140,7 @@ impl OperatorFlow {
         if let Some(mut op) = self.core.take() {
             let state = op.fire()?;
             if matches!(state, State::Finished) {
-                self.is_finished = false;
+                self.is_finished = true;
                 for output in op.outputs() {
                     output.close()?;
                 }

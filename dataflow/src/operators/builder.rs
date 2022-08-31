@@ -4,14 +4,14 @@ use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_common::downcast::AsAny;
 use smallvec::SmallVec;
 
-use crate::operators::{Operator, OperatorFlow, OperatorInfo};
+use crate::operators::{OperatorTrait, Operator, OperatorInfo};
 
 pub trait Builder: AsAny {
     fn add_feedback(&mut self, _feedback: Box<dyn AnyInput>) {
         panic!("feedback not supported")
     }
 
-    fn build(self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator>;
+    fn build(self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn OperatorTrait>;
 }
 
 pub struct OperatorInBuild {
@@ -19,6 +19,8 @@ pub struct OperatorInBuild {
     builder: Box<dyn Builder>,
     dependencies: SmallVec<[usize; 2]>,
     dependents: SmallVec<[usize; 2]>,
+    sub_index: Option<usize>,
+    parent_index: Option<usize>,
 }
 
 impl OperatorInBuild {
@@ -31,6 +33,8 @@ impl OperatorInBuild {
             builder: Box::new(builder),
             dependencies: SmallVec::new(),
             dependents: SmallVec::new(),
+            sub_index: None,
+            parent_index: None,
         }
     }
 
@@ -42,17 +46,33 @@ impl OperatorInBuild {
         self.dependencies.push(index)
     }
 
+    pub fn add_sub(&mut self, index: usize) {
+        self.sub_index = Some(index);
+    }
+
     pub fn dependent_on(&mut self, index: usize) {
         self.dependents.push(index)
+    }
+
+    pub fn add_parent(&mut self, index: usize) {
+        self.parent_index = Some(index);
     }
 
     pub fn add_feedback(&mut self, feedback: Box<dyn AnyInput>) {
         self.builder.add_feedback(feedback);
     }
 
-    pub fn build(self, event_emitter: EventEmitter) -> OperatorFlow {
+    pub fn build(self, event_emitter: EventEmitter) -> Operator {
         let op = self.builder.build(event_emitter);
-        OperatorFlow::new(self.info, op, self.dependencies, self.dependents)
+        let mut of = Operator::new(self.info, op, self.dependencies, self.dependents);
+        if let Some(index) = self.sub_index {
+            of.add_sub(index);
+        }
+
+        if let Some(index) = self.parent_index {
+            of.add_parent(index)
+        }
+        of
     }
 }
 

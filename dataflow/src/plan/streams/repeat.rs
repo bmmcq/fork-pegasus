@@ -118,7 +118,7 @@ impl<Di: Data> RepeatStream<Di> {
             .alloc_multi_scope::<Di>(ch_info, self.channel)
             .await?;
         self.src.set_push(push);
-        let worker_index = self.builder.worker_index;
+        let worker_index = self.builder.cluster_peer_index;
         let output = MultiScopeStreamBuilder::<Do>::new(worker_index, scope_level, (index, 0).into());
         let build_common = BuildCommon::new_unary(worker_index, input, output.clone());
 

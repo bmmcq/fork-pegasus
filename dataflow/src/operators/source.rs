@@ -13,7 +13,7 @@ use pegasus_common::tag::Tag;
 
 use crate::errors::JobExecError;
 use crate::operators::builder::Builder;
-use crate::operators::{Operator, State};
+use crate::operators::{OperatorTrait, State};
 
 pub struct SourceOperator<Iter> {
     extern_data: Option<Iter>,
@@ -21,7 +21,7 @@ pub struct SourceOperator<Iter> {
     output: [Box<dyn AnyOutput>; 1],
 }
 
-impl<Iter> Operator for SourceOperator<Iter>
+impl<Iter> OperatorTrait for SourceOperator<Iter>
 where
     Iter: Iterator + Send + 'static,
     Iter::Item: Data,
@@ -110,7 +110,7 @@ where
     Iter::Item: Data,
     Iter::IntoIter: Send + 'static,
 {
-    fn build(self: Box<Self>, _event_emitter: EventEmitter) -> Box<dyn Operator> {
+    fn build(self: Box<Self>, _event_emitter: EventEmitter) -> Box<dyn OperatorTrait> {
         Box::new(SourceOperator {
             extern_data: Some(self.extern_data.into_iter()),
             _inputs: vec![],

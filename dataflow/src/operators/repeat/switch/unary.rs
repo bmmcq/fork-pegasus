@@ -16,7 +16,7 @@ use crate::operators::builder::{BuildCommon, Builder};
 use crate::operators::consume::MiniScopeBatchStream;
 use crate::operators::repeat::switch::RepeatSwitchOperatorBuilder;
 use crate::operators::unary::unary_consume;
-use crate::operators::{MultiScopeOutput, Operator, State};
+use crate::operators::{MultiScopeOutput, OperatorTrait, State};
 
 pub struct RepeatSwitchUnaryOperator<I, O, F> {
     #[allow(dead_code)]
@@ -30,7 +30,7 @@ pub struct RepeatSwitchUnaryOperator<I, O, F> {
     _ph: std::marker::PhantomData<(I, O)>,
 }
 
-impl<I, O, F> Operator for RepeatSwitchUnaryOperator<I, O, F>
+impl<I, O, F> OperatorTrait for RepeatSwitchUnaryOperator<I, O, F>
 where
     I: Data,
     O: Data,
@@ -148,7 +148,7 @@ where
         + Send
         + 'static,
 {
-    fn build(mut self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn Operator> {
+    fn build(mut self: Box<Self>, event_emitter: EventEmitter) -> Box<dyn OperatorTrait> {
         let feedback = self
             .inner
             .feedback

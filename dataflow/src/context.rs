@@ -10,23 +10,24 @@ pub enum ContextKind {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct ScopeContext {
     id: u16,
+    parent_id: Option<u16>,
     level: u8,
     kind: ContextKind,
 }
 
 impl ScopeContext {
     pub fn new(id: u16, level: u8, kind: ContextKind) -> Self {
-        Self { id, level, kind }
+        Self { id, parent_id: None, level, kind }
     }
 
-    pub fn new_repeat(id: u16, level: u8) -> Self {
-        Self { id, level, kind: ContextKind::Repeat }
+    pub fn new_repeat(&self, id: u16) -> Self {
+        Self { id, parent_id: Some(self.id), level: self.level + 1, kind: ContextKind::Repeat }
     }
 
-    pub fn new_apply(id: u16, level: u8) -> Self {
-        Self { id, level, kind: ContextKind::Apply }
+    pub fn new_apply(&self, id: u16) -> Self {
+        Self { id, parent_id: Some(self.id), level: self.level + 1, kind: ContextKind::Apply }
     }
-
+    
     pub fn id(&self) -> u16 {
         self.id
     }
@@ -37,6 +38,14 @@ impl ScopeContext {
 
     pub fn context(&self) -> ContextKind {
         self.kind
+    }
+    
+    pub fn is_parent_of(&self, other: &ScopeContext) -> bool {
+         if let Some(ref pid) = other.parent_id { 
+             self.id == *pid
+         } else { 
+             false
+         }
     }
 }
 
