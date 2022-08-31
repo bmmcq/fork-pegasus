@@ -19,7 +19,6 @@ use std::rc::Rc;
 use pegasus_common::tag::Tag;
 
 use crate::data::Data;
-use crate::output::delta::ScopeDelta;
 use crate::output::proxy::{MultiScopeOutputProxy, OutputProxy};
 use crate::output::unify::EnumStreamBufPush;
 use crate::output::{AnyOutput, OutputInfo};
@@ -33,51 +32,30 @@ pub struct StreamOutputBuilder<D: Data> {
     worker_index: u16,
     info: OutputInfo,
     tag: Tag,
-    delta: Option<ScopeDelta>,
     push: Option<EnumStreamBufPush<D>>,
 }
 
 impl<D: Data> StreamOutputBuilder<D> {
     pub fn new(worker_index: u16, port: Port, tag: Tag) -> Self {
         let scope_level = tag.len() as u8;
-        StreamOutputBuilder {
-            worker_index,
-            tag,
-            delta: None,
-            info: OutputInfo { port, scope_level },
-            push: None,
-        }
+        StreamOutputBuilder { worker_index, tag, info: OutputInfo { port, scope_level }, push: None }
     }
 
     pub fn get_port(&self) -> Port {
         self.info.port
     }
 
-    pub fn get_inbound_tag(&self) -> &Tag {
-        &self.tag
+    pub fn get_tag(&self) -> Tag {
+        self.tag.clone()
     }
 
-    pub fn get_outbound_scope_level(&self) -> u8 {
-        match self.delta {
-            None => self.info.scope_level,
-            Some(ScopeDelta::None) => self.info.scope_level,
-            Some(ScopeDelta::ToSibling) => self.info.scope_level,
-            Some(ScopeDelta::ToChild) => self.info.scope_level + 1,
-            Some(ScopeDelta::ToParent) => {
-                assert!(self.info.scope_level > 0);
-                self.info.scope_level - 1
-            }
-        }
+    pub fn get_scope_level(&self) -> u8 {
+        self.info.scope_level
     }
 
     pub fn set_push(&mut self, push: EnumStreamBufPush<D>) {
         assert!(self.push.is_none(), "conflict set push;");
         self.push = Some(push);
-    }
-
-    pub fn set_delta(&mut self, delta: ScopeDelta) {
-        assert!(self.delta.is_none(), "conflict set delta;");
-        self.delta = Some(delta)
     }
 
     pub fn shared(self) -> StreamBuilder<D> {
@@ -88,49 +66,24 @@ impl<D: Data> StreamOutputBuilder<D> {
 pub struct MultiScopeStreamOutputBuilder<D: Data> {
     worker_index: u16,
     info: OutputInfo,
-    delta: Option<ScopeDelta>,
     push: Option<EnumStreamBufPush<D>>,
 }
 
 impl<D: Data> MultiScopeStreamOutputBuilder<D> {
-    pub fn new(worker_index: u16, inbound_scope_level: u8, port: Port) -> Self {
-        Self {
-            worker_index,
-            info: OutputInfo { port, scope_level: inbound_scope_level },
-            delta: None,
-            push: None,
-        }
+    pub fn new(worker_index: u16, scope_level: u8, port: Port) -> Self {
+        Self { worker_index, info: OutputInfo { port, scope_level }, push: None }
     }
 
     pub fn get_port(&self) -> Port {
         self.info.port
     }
 
-    pub fn get_inbound_scope_level(&self) -> u8 {
+    pub fn get_scope_level(&self) -> u8 {
         self.info.scope_level
     }
 
-    pub fn get_outbound_scope_level(&self) -> u8 {
-        match self.delta {
-            None => self.info.scope_level,
-            Some(ScopeDelta::None) => self.info.scope_level,
-            Some(ScopeDelta::ToSibling) => self.info.scope_level,
-            Some(ScopeDelta::ToChild) => self.info.scope_level + 1,
-            Some(ScopeDelta::ToParent) => {
-                assert!(self.info.scope_level > 0);
-                self.info.scope_level - 1
-            }
-        }
-    }
-
     pub fn set_push(&mut self, push: EnumStreamBufPush<D>) {
-        assert!(self.delta.is_none(), "conflict set delta;");
         self.push = Some(push);
-    }
-
-    pub fn set_delta(&mut self, delta: ScopeDelta) {
-        assert!(self.delta.is_none(), "conflict set delta;");
-        self.delta = Some(delta)
     }
 
     pub fn shared(self) -> MultiScopeStreamBuilder<D> {
@@ -147,20 +100,16 @@ impl<D: Data> StreamBuilder<D> {
         self.inner.borrow().get_port()
     }
 
-    pub fn get_inbound_tag(&self) -> Tag {
-        self.inner.borrow().get_inbound_tag().clone()
+    pub fn get_tag(&self) -> Tag {
+        self.inner.borrow().get_tag()
     }
 
-    pub fn get_outbound_scope_level(&self) -> u8 {
-        self.inner.borrow().get_outbound_scope_level()
+    pub fn get_scope_level(&self) -> u8 {
+        self.inner.borrow().get_scope_level()
     }
 
     pub fn set_push(&self, push: EnumStreamBufPush<D>) {
         self.inner.borrow_mut().set_push(push)
-    }
-
-    pub fn set_delta(&self, delta: ScopeDelta) {
-        self.inner.borrow_mut().set_delta(delta)
     }
 }
 
@@ -178,8 +127,7 @@ impl<D: Data> OutputBuilder for StreamBuilder<D> {
             .take()
             .unwrap_or(EnumStreamBufPush::Null);
         let worker_index = self.inner.borrow().worker_index;
-        let delta = bm.delta.unwrap_or(ScopeDelta::None);
-        Box::new(OutputProxy::new(worker_index, bm.tag.clone(), bm.info, delta, push))
+        Box::new(OutputProxy::new(worker_index, bm.tag.clone(), bm.info, push))
     }
 }
 
@@ -202,16 +150,12 @@ impl<D: Data> MultiScopeStreamBuilder<D> {
         self.inner.borrow().get_port()
     }
 
-    pub fn get_outbound_scope_level(&self) -> u8 {
-        self.inner.borrow().get_outbound_scope_level()
+    pub fn get_scope_level(&self) -> u8 {
+        self.inner.borrow().get_scope_level()
     }
 
     pub fn set_push(&self, push: EnumStreamBufPush<D>) {
         self.inner.borrow_mut().set_push(push)
-    }
-
-    pub fn set_delta(&self, delta: ScopeDelta) {
-        self.inner.borrow_mut().set_delta(delta)
     }
 }
 
@@ -229,7 +173,6 @@ impl<D: Data> OutputBuilder for MultiScopeStreamBuilder<D> {
             .take()
             .unwrap_or(EnumStreamBufPush::Null);
         let worker_index = self.inner.borrow().worker_index;
-        let delta = bm.delta.unwrap_or(ScopeDelta::None);
-        Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, delta, push))
+        Box::new(MultiScopeOutputProxy::new(worker_index, bm.info, push))
     }
 }

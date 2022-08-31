@@ -27,7 +27,7 @@ impl ScopeContext {
     pub fn new_apply(&self, id: u16) -> Self {
         Self { id, parent_id: Some(self.id), level: self.level + 1, kind: ContextKind::Apply }
     }
-    
+
     pub fn id(&self) -> u16 {
         self.id
     }
@@ -39,13 +39,13 @@ impl ScopeContext {
     pub fn context(&self) -> ContextKind {
         self.kind
     }
-    
+
     pub fn is_parent_of(&self, other: &ScopeContext) -> bool {
-         if let Some(ref pid) = other.parent_id { 
-             self.id == *pid
-         } else { 
-             false
-         }
+        if let Some(ref pid) = other.parent_id {
+            self.id == *pid
+        } else {
+            false
+        }
     }
 }
 

@@ -63,7 +63,10 @@ impl DataflowBuilder {
         }
     }
 
-    pub(crate) fn add_source<OB>(&self, op: OB) where OB: Builder {
+    pub(crate) fn add_source<OB>(&self, op: OB)
+    where
+        OB: Builder,
+    {
         let mut operators_br = self.operators.borrow_mut();
         assert_eq!(operators_br.len(), 0);
         let scope_ctx = ScopeContext::new(0, 0, ContextKind::Flat);
@@ -79,7 +82,11 @@ impl DataflowBuilder {
         let mut operators_br = self.operators.borrow_mut();
         assert!(pre_op_index < operators_br.len());
         let pre = &mut operators_br[pre_op_index];
-        if pre.info().scope_ctx.is_parent_of(&info.scope_ctx) {
+        if pre
+            .info()
+            .scope_ctx
+            .is_parent_of(&info.scope_ctx)
+        {
             pre.add_sub(info.index as usize);
             let mut op_builder = OperatorInBuild::new(info, op);
             op_builder.add_parent(pre_op_index);
@@ -170,7 +177,6 @@ impl DataflowBuilder {
             assert_eq!(operators.len(), offset);
 
             operators.push(op);
-
         }
         let event_collector = self
             .channel_alloc

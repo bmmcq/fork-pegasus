@@ -7,7 +7,6 @@ use pegasus_common::tag::Tag;
 use crate::abort::AbortHandle;
 use crate::data::Data;
 use crate::error::PushError;
-use crate::output::delta::ScopeDelta;
 use crate::output::handle::{MultiScopeOutputHandle, OutputHandle};
 use crate::output::unify::EnumStreamBufPush;
 use crate::output::{AnyOutput, Output, OutputInfo};
@@ -16,10 +15,8 @@ pub struct OutputProxy<D: Data>(RefCell<OutputHandle<D, EnumStreamBufPush<D>>>);
 pub struct MultiScopeOutputProxy<D: Data>(RefCell<MultiScopeOutputHandle<D, EnumStreamBufPush<D>>>);
 
 impl<D: Data> OutputProxy<D> {
-    pub fn new(
-        worker_index: u16, tag: Tag, info: OutputInfo, delta: ScopeDelta, output: EnumStreamBufPush<D>,
-    ) -> Self {
-        let handle = OutputHandle::new(worker_index, tag, info, delta, output);
+    pub fn new(worker_index: u16, tag: Tag, info: OutputInfo, output: EnumStreamBufPush<D>) -> Self {
+        let handle = OutputHandle::new(worker_index, tag, info, output);
         Self(RefCell::new(handle))
     }
 
@@ -60,10 +57,8 @@ impl<D: Data> Output for OutputProxy<D> {
 }
 
 impl<D: Data> MultiScopeOutputProxy<D> {
-    pub fn new(
-        worker_index: u16, info: OutputInfo, delta: ScopeDelta, output: EnumStreamBufPush<D>,
-    ) -> Self {
-        let handle = MultiScopeOutputHandle::new(worker_index, info, delta, output);
+    pub fn new(worker_index: u16, info: OutputInfo, output: EnumStreamBufPush<D>) -> Self {
+        let handle = MultiScopeOutputHandle::new(worker_index, info, output);
         Self(RefCell::new(handle))
     }
 

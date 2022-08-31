@@ -112,7 +112,7 @@ impl<Di: Data> RepeatStream<Di> {
     {
         let index = self.builder.op_size() as u16;
         let ch_info = self.new_channel_info((index, 0).into());
-        let scope_level = self.src.get_outbound_scope_level();
+        let scope_level = self.src.get_scope_level();
         let (push, input) = self
             .builder
             .alloc_multi_scope::<Di>(ch_info, self.channel)
@@ -155,7 +155,7 @@ impl<Di: Data> RepeatStream<Di> {
 
     fn new_channel_info(&self, target_port: Port) -> ChannelInfo {
         let ch_id = self.builder.new_channel_id();
-        let scope_level = self.src.get_outbound_scope_level();
+        let scope_level = self.src.get_scope_level();
 
         ChannelInfo {
             ch_id,

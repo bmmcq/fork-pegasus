@@ -104,7 +104,7 @@ impl<D: Data> Stream<D> {
             src_op_index: new_op_index as usize,
             batch_size: builder.config.default_batch_size(),
             batch_capacity: builder.config.default_batch_capacity(),
-            tag: leave.get_inbound_tag().to_parent_uncheck(),
+            tag: leave.get_tag().to_parent_uncheck(),
             scope_ctx,
             src: leave,
             channel: ChannelKind::Pipeline,
@@ -145,7 +145,7 @@ impl<D: Data> Stream<D> {
     }
 
     async fn _switch_unary<O, CF, F>(
-        self, times: u32, name: &str, leave: StreamBuilder<D>, construct: CF,
+        mut self, times: u32, name: &str, leave: StreamBuilder<D>, construct: CF,
     ) -> Result<RepeatStream<O>, JobBuildError>
     where
         O: Data,
@@ -156,23 +156,23 @@ impl<D: Data> Stream<D> {
     {
         let new_op_index = self.builder.op_size() as u16;
         let ch_info = self.new_channel_info((new_op_index, 0).into());
+        let kind = std::mem::replace(&mut self.channel, ChannelKind::Pipeline);
         let (loop_input_push, loop_input) = self
             .builder
-            .alloc::<D>(self.tag.clone(), ch_info, self.channel)
+            .alloc::<D>(self.tag.clone(), ch_info, kind)
             .await?;
         self.src.set_push(loop_input_push);
-        let worker_index = self.builder.cluster_peer_index;
 
-        let scope_level = self.src.get_outbound_scope_level();
-        assert_eq!(scope_level, leave.get_outbound_scope_level() + 1);
-        let repeat_output =
-            MultiScopeStreamBuilder::<O>::new(worker_index, scope_level, (new_op_index, 1).into());
+        let scope_ctx = self.new_repeat_scope();
+        let worker_index = self.builder.cluster_peer_index;
+        let into_repeat =
+            MultiScopeStreamBuilder::<O>::new(worker_index, scope_ctx.level(), (new_op_index, 1).into());
         let build_common = BuildCommon {
             worker_index,
             inputs: smallvec![loop_input],
             outputs: smallvec![
                 Box::new(leave) as Box<dyn OutputBuilder>,
-                Box::new(repeat_output.clone()) as Box<dyn OutputBuilder>
+                Box::new(into_repeat.clone()) as Box<dyn OutputBuilder>
             ],
         };
         let unary = construct();
@@ -181,7 +181,7 @@ impl<D: Data> Stream<D> {
         self.builder
             .add_operator(self.src_op_index, info, op_build);
         let feedback_port = (new_op_index, 1).into();
-        Ok(RepeatStream::new(self.scope_ctx, repeat_output, feedback_port, self.builder))
+        Ok(RepeatStream::new(scope_ctx, into_repeat, feedback_port, self.builder))
     }
 
     fn new_repeat_scope(&self) -> ScopeContext {
@@ -191,7 +191,7 @@ impl<D: Data> Stream<D> {
 
     fn new_channel_info(&self, target_port: Port) -> ChannelInfo {
         let ch_id = self.builder.new_channel_id();
-        let scope_level = self.src.get_outbound_scope_level();
+        let scope_level = self.src.get_scope_level();
 
         ChannelInfo {
             ch_id,
@@ -214,9 +214,10 @@ impl DataflowBuilder {
         It::IntoIter: Send + 'static,
     {
         let output_builder =
-            StreamOutputBuilder::<It::Item>::new(self.cluster_peer_index, (0, 0).into(), Tag::Null).shared();
+            StreamOutputBuilder::<It::Item>::new(self.cluster_peer_index, (0, 0).into(), Tag::Null)
+                .shared();
         let op_builder = SourceOperatorBuilder::new(source, Box::new(output_builder.clone()));
-        self.add_source( op_builder);
+        self.add_source(op_builder);
         Stream {
             src_op_index: 0,
             batch_size: self.config.default_batch_size(),

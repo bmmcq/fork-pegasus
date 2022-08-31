@@ -4,7 +4,7 @@ use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_common::downcast::AsAny;
 use smallvec::SmallVec;
 
-use crate::operators::{OperatorTrait, Operator, OperatorInfo};
+use crate::operators::{Operator, OperatorInfo, OperatorTrait};
 
 pub trait Builder: AsAny {
     fn add_feedback(&mut self, _feedback: Box<dyn AnyInput>) {

@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use nohash_hasher::IntMap;
-use smallvec::SmallVec;
 use pegasus_channel::event::emitter::EventCollector;
 use pegasus_common::config::JobConfig;
+use smallvec::SmallVec;
 
-use crate::context::{ScopeContext};
+use crate::context::ScopeContext;
 use crate::operators::Operator;
 
 pub mod builder;
@@ -13,7 +13,7 @@ mod streams;
 
 pub struct SourceNode {
     op_index: usize,
-    next: SmallVec<[usize; 2]>
+    next: SmallVec<[usize; 2]>,
 }
 
 pub struct OpNode {
@@ -31,21 +31,13 @@ pub struct Plan {
 
 impl SourceNode {
     fn new(op_index: usize) -> Self {
-        Self {
-            op_index,
-            next: SmallVec::new()
-        }
+        Self { op_index, next: SmallVec::new() }
     }
 }
 
 impl OpNode {
     fn new(op_index: usize) -> Self {
-        Self {
-            op_index,
-            prev: SmallVec::new(),
-            next: SmallVec::new(),
-            nested: None,
-        }
+        Self { op_index, prev: SmallVec::new(), next: SmallVec::new(), nested: None }
     }
 }
 
@@ -57,11 +49,7 @@ impl Plan {
         for next in source.dependencies() {
             src_node.next.push(*next);
         }
-        let mut plan = Self {
-            source: src_node,
-            nodes: IntMap::default(),
-            scope_ctx
-        };
+        let mut plan = Self { source: src_node, nodes: IntMap::default(), scope_ctx };
         for next in source.dependencies() {
             plan.add_op(*next, operators);
         }
@@ -102,8 +90,6 @@ impl Plan {
     }
 }
 
-
-
 #[allow(dead_code)]
 pub struct DataFlowTask {
     index: u16,
@@ -111,29 +97,17 @@ pub struct DataFlowTask {
     event_collector: EventCollector,
     operators: Vec<Operator>,
     plan: Plan,
-    sinks: SmallVec<[usize; 2]>
+    sinks: SmallVec<[usize; 2]>,
 }
 
 impl DataFlowTask {
     pub(crate) fn new(
-        index: u16, config: Arc<JobConfig>, event_collector: EventCollector,
-        operators: Vec<Operator>) -> Self
-    {
+        index: u16, config: Arc<JobConfig>, event_collector: EventCollector, operators: Vec<Operator>,
+    ) -> Self {
         let plan = Plan::new(0, &operators);
         let sinks = plan.get_sinks();
-        Self {
-            index,
-            config,
-            event_collector,
-            operators,
-            plan,
-            sinks
-        }
+        Self { index, config, event_collector, operators, plan, sinks }
     }
 
-
-    pub fn poll(&mut self) {
-
-    }
-
+    pub fn poll(&mut self) {}
 }

@@ -2,6 +2,7 @@ use std::any::Any;
 
 use pegasus_channel::block::BlockHandle;
 use pegasus_channel::data::Data;
+use pegasus_channel::eos::Eos;
 use pegasus_channel::error::PushError;
 use pegasus_channel::event::emitter::EventEmitter;
 use pegasus_channel::input::handle::{MiniScopeBatchQueue, PopEntry};
@@ -10,6 +11,7 @@ use pegasus_channel::input::AnyInput;
 use pegasus_channel::output::builder::OutputBuilder;
 use pegasus_channel::output::handle::MiniScopeStreamSinkFactory;
 use pegasus_channel::output::proxy::{MultiScopeOutputProxy, OutputProxy};
+use pegasus_channel::output::streaming::StreamPush;
 use pegasus_channel::output::AnyOutput;
 use pegasus_common::downcast::AsAny;
 use pegasus_common::tag::Tag;
@@ -24,6 +26,7 @@ pub struct RepeatSwitchOperator<D> {
     times: u32,
     #[allow(dead_code)]
     event_emitter: EventEmitter,
+    source_end: Option<Eos>,
     inputs: [Box<dyn AnyInput>; 2],
     outputs: [Box<dyn AnyOutput>; 2],
     _ph: std::marker::PhantomData<D>,
@@ -61,12 +64,20 @@ where
                 if loops >= self.times {
                     // send to output 0 which leave loop;
                     if leave_repeat(stream, &mut leave)? {
+                        if let Some(end) = self.source_end.take() {
+                            leave.notify_end(end)?;
+                        } else {
+                            panic!("repeat exit while source not end;")
+                        }
                         repeat.close()?;
                         return Ok(State::Finished);
                     }
                 } else {
                     // send into loop;
-                    next_repeat(stream, &mut repeat)?;
+                    if let Some(mut end) = into_repeat(stream, &mut repeat)? {
+                        end.advance_tag();
+                        repeat.notify_end(end)?;
+                    }
                 }
             }
         }
@@ -77,7 +88,9 @@ where
                 .streams()
                 .next()
                 .expect("at least one stream");
-            next_repeat(stream, &mut repeat)?;
+            if let Some(end) = into_repeat(stream, &mut repeat)? {
+                self.source_end = Some(end);
+            }
         }
 
         if leave.has_blocks() {
@@ -102,13 +115,14 @@ fn leave_repeat<D>(stream: &mut MiniScopeBatchQueue<D>, leave: &mut Output<D>) -
 where
     D: Data,
 {
-    let mut session = leave.new_session(stream.tag())?.expect("");
+    let leave_tag = stream.tag().to_parent_uncheck();
+    let mut session = leave.new_session(&leave_tag)?.expect("");
     loop {
         match stream.front() {
             PopEntry::Ready(batch) => match session.give_iterator(batch.take_data()) {
                 Ok(()) => {
-                    if let Some(end) = batch.take_end() {
-                        session.notify_end(end)?;
+                    if let Some(_end) = batch.take_end() {
+                        //session.notify_end(end)?;
                         return Ok(true);
                     }
                 }
@@ -127,34 +141,41 @@ where
     Ok(false)
 }
 
-fn next_repeat<D>(
+fn into_repeat<D>(
     stream: &mut MiniScopeBatchQueue<D>, enter: &mut MultiScopeOutput<D>,
-) -> Result<(), PushError>
+) -> Result<Option<Eos>, PushError>
 where
     D: Data,
 {
-    let mut session = enter.new_session(stream.tag())?.expect("");
+    let tag = if stream.tag().len() == enter.info().scope_level as usize {
+        stream.tag().advance()
+    } else {
+        assert_eq!(stream.tag().len() + 1, enter.info().scope_level as usize);
+        Tag::inherit(stream.tag(), 0)
+    };
+
+    let mut session = enter.new_session(&tag)?.expect("");
     loop {
         match stream.front() {
             PopEntry::End | PopEntry::NotReady => break,
             PopEntry::Ready(batch) => match session.give_iterator(batch.take_data()) {
                 Ok(()) => {
                     if let Some(end) = batch.take_end() {
-                        session.notify_end(end)?;
+                        return Ok(Some(end));
                     }
                 }
                 Err(PushError::WouldBlock(b)) => {
                     if let Some(guard) = b {
                         stream.block(guard.into());
                     }
-                    return Ok(());
+                    return Ok(None);
                 }
                 Err(e) => return Err(e),
             },
         }
         let _discard = stream.pop();
     }
-    Ok(())
+    Ok(None)
 }
 
 pub struct RepeatSwitchOperatorBuilder<D> {
@@ -224,6 +245,7 @@ where
             worker_index: self.worker_index,
             times: self.times,
             event_emitter,
+            source_end: None,
             inputs: [self.enter_loop, feedback],
             outputs: [self.leave.build(), self.reenter.build()],
             _ph: self._ph,

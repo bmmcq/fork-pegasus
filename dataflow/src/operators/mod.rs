@@ -76,7 +76,15 @@ impl Operator {
         info: OperatorInfo, op: Box<dyn OperatorTrait>, dependencies: SmallVec<[usize; 2]>,
         dependents: SmallVec<[usize; 2]>,
     ) -> Self {
-        Self { is_finished: false, info, core: Some(op), dependencies, dependents, sub_index: None, parent_index: None }
+        Self {
+            is_finished: false,
+            info,
+            core: Some(op),
+            dependencies,
+            dependents,
+            sub_index: None,
+            parent_index: None,
+        }
     }
 
     pub(crate) fn add_sub(&mut self, index: usize) {

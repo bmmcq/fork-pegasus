@@ -21,7 +21,6 @@ use crate::block::{BlockEntry, BlockHandle, BlockKind};
 use crate::data::Data;
 use crate::eos::Eos;
 use crate::error::PushError;
-use crate::output::delta::ScopeDelta;
 use crate::output::streaming::{Pinnable, Pushed, StreamPush};
 use crate::output::OutputInfo;
 
@@ -117,9 +116,7 @@ pub struct OutputHandle<D, T> {
     is_closed: bool,
     is_aborted: bool,
     info: OutputInfo,
-    in_tag: Tag,
     out_tag: Tag,
-    scope_delta: ScopeDelta,
     send_buffer: Option<BlockEntry<D>>,
     output: T,
 }
@@ -129,25 +126,21 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    pub(crate) fn new(worker_index: u16, tag: Tag, info: OutputInfo, delta: ScopeDelta, output: T) -> Self {
+    pub(crate) fn new(worker_index: u16, tag: Tag, info: OutputInfo, output: T) -> Self {
         assert_eq!(info.scope_level, 0);
-        let out_tag = delta.evolve(&tag);
         OutputHandle {
             info,
-            in_tag: tag,
-            out_tag,
+            out_tag: tag,
             worker_index,
             is_closed: false,
             is_aborted: false,
-            scope_delta: delta,
             send_buffer: None,
             output,
         }
     }
 
     fn notify_end(&mut self, mut end: Eos) -> Result<(), PushError> {
-        let tag = self.scope_delta.evolve(&end.tag);
-        end.tag = tag;
+        end.tag = self.out_tag.clone();
         assert_eq!(self.out_tag, end.tag);
         assert!(self.send_buffer.is_none());
         self.output.notify_end(end)
@@ -245,7 +238,7 @@ where
             // let eb_tag = self.scope_delta.evolve_back(&abort);
             // assert!(eb_tag.is_root());
             self.is_aborted = true;
-            Some(self.in_tag.clone())
+            Some(self.out_tag.clone())
         } else {
             Some(tag)
         }
@@ -308,12 +301,7 @@ where
     T: StreamPush<D>,
 {
     fn new_session(&mut self, tag: &Tag) -> Result<Option<MiniScopeStreamSink<D, Self>>, PushError> {
-        if matches!(self.scope_delta, ScopeDelta::ToParent) {
-            assert_eq!(tag.to_parent_uncheck(), self.in_tag.to_parent_uncheck());
-        } else {
-            assert_eq!(tag, &self.in_tag);
-        }
-
+        assert_eq!(tag, &self.out_tag);
         if self.send_buffer.is_none() {
             Ok(Some(MiniScopeStreamSink::new(self.is_aborted, self.out_tag.clone(), self)))
         } else {
@@ -327,7 +315,6 @@ pub struct MultiScopeOutputHandle<D, T> {
     worker_index: u16,
     is_closed: bool,
     info: OutputInfo,
-    scope_delta: ScopeDelta,
     send_buffer: AHashMap<Tag, BlockEntry<D>>,
     aborts: AHashSet<Tag>,
     output: T,
@@ -338,12 +325,11 @@ where
     D: Data,
     T: StreamPush<D>,
 {
-    pub fn new(worker_index: u16, info: OutputInfo, delta: ScopeDelta, output: T) -> Self {
+    pub fn new(worker_index: u16, info: OutputInfo, output: T) -> Self {
         Self {
             info,
             worker_index,
             is_closed: false,
-            scope_delta: delta,
             send_buffer: AHashMap::new(),
             aborts: AHashSet::new(),
             output,
@@ -518,10 +504,9 @@ where
     T: StreamPush<D> + Pinnable + 'static,
 {
     fn new_session(&mut self, tag: &Tag) -> Result<Option<MiniScopeStreamSink<D, Self>>, PushError> {
-        let push_tag = self.scope_delta.evolve(tag);
-        if self.output.pin(&push_tag)? {
+        if self.output.pin(tag)? {
             let is_aborted = self.aborts.contains(tag);
-            Ok(Some(MiniScopeStreamSink::new(is_aborted, push_tag, self)))
+            Ok(Some(MiniScopeStreamSink::new(is_aborted, tag.clone(), self)))
         } else {
             Ok(None)
         }

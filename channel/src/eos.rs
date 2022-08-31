@@ -183,6 +183,10 @@ impl Eos {
         Eos { tag, total_send, global_total_send, parent_peers, child_peers: PeerSet::empty() }
     }
 
+    pub fn advance_tag(&mut self) {
+        self.tag = self.tag.advance();
+    }
+
     pub fn add_child_send(&mut self, to: u16, total_send: usize) {
         if total_send > 0 {
             self.child_peers.add_peer(to);
