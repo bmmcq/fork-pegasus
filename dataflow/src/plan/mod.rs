@@ -6,7 +6,8 @@ use pegasus_common::config::JobConfig;
 use smallvec::SmallVec;
 
 use crate::context::ScopeContext;
-use crate::operators::Operator;
+use crate::errors::JobExecError;
+use crate::operators::{Operator, State};
 
 pub mod builder;
 mod streams;
@@ -79,7 +80,7 @@ impl Plan {
         }
     }
 
-    fn get_sinks(&self) -> SmallVec<[usize; 2]> {
+    fn get_leafs(&self) -> SmallVec<[usize; 2]> {
         let mut sinks = SmallVec::new();
         for (index, node) in self.nodes.iter() {
             if node.next.is_empty() {
@@ -97,7 +98,7 @@ pub struct DataFlowTask {
     event_collector: EventCollector,
     operators: Vec<Operator>,
     plan: Plan,
-    sinks: SmallVec<[usize; 2]>,
+    leafs: SmallVec<[usize; 2]>,
 }
 
 impl DataFlowTask {
@@ -105,9 +106,16 @@ impl DataFlowTask {
         index: u16, config: Arc<JobConfig>, event_collector: EventCollector, operators: Vec<Operator>,
     ) -> Self {
         let plan = Plan::new(0, &operators);
-        let sinks = plan.get_sinks();
-        Self { index, config, event_collector, operators, plan, sinks }
+        let leafs = plan.get_leafs();
+        Self { index, config, event_collector, operators, plan, leafs }
     }
 
-    pub fn poll(&mut self) {}
+    pub fn poll(&mut self) -> Result<(), JobExecError> {
+        // 1. 从叶子节点还是开始poll执行：
+        //     1.1. 如果所有叶子节点都返回Finished状态，返回 Task Finished；
+        //     1.2. 如果有一个叶子节点返回blocking状态，返回 Task Block;
+        //     1.3. 如果所有叶子节点返回状态部分Idle和部分Finished, 但不是1.1的情况， 进入2 poll上游依赖算子；
+        // 2.
+        todo!()
+    }
 }
