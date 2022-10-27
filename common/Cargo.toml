@@ -20,7 +20,7 @@ env_logger = { version = "0.9" , optional = true }
 time = { version = "0.1", optional = true }
 smallvec = "1.6"
 rand = "0.8.3"
-valley = { path = "../../valley" }
+valley = { git  = "https://github.com/bmmcq/valley" }
 
 [dev-dependencies]
 bincode = "1.3"

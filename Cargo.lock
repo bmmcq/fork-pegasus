@@ -752,6 +752,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "pegasus_base"
+version = "0.1.0"
+
+[[package]]
 name = "pegasus_channel"
 version = "1.0.0"
 dependencies = [
@@ -1529,6 +1533,7 @@ checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 [[package]]
 name = "valley"
 version = "0.1.0"
+source = "git+https://github.com/bmmcq/valley#8183e6088a7403d9e032ec04fdf53a80990d8465"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -12,5 +12,5 @@ bytes = "1.1.0"
 nohash-hasher = "0.2.0"
 anyhow = "1.0"
 tokio = { version = "1.19.2", features = ["rt-multi-thread"] }
-valley = { path = "../../valley" }
+valley = { git = "https://github.com/bmmcq/valley" }
 pegasus_common = { path = "../common" }
